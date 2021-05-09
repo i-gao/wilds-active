@@ -59,8 +59,8 @@ def save_model(algorithm, epoch, best_val_metric, path):
     state['best_val_metric'] = best_val_metric
     torch.save(state, path)
 
-def load(algorithm, path):
-    state = torch.load(path)
+def load(algorithm, path, device):
+    state = torch.load(path, map_location=device)
     algorithm.load_state_dict(state['algorithm'])
     return state['epoch'], state['best_val_metric']
 

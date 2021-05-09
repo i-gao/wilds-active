@@ -8,6 +8,9 @@ import torchvision
 import sys
 from collections import defaultdict
 
+# TODO: This is needed to test the WILDS package locally. Remove later -Tony
+sys.path.insert(1, os.path.join(sys.path[0], '..'))
+
 import wilds
 from wilds.common.data_loaders import get_train_loader, get_eval_loader
 from wilds.common.grouper import CombinatorialGrouper
@@ -15,6 +18,7 @@ from wilds.common.grouper import CombinatorialGrouper
 from utils import set_seed, Logger, BatchLogger, log_config, ParseKwargs, load, initialize_wandb, log_group_data, parse_bool, get_model_prefix
 from train import train, evaluate
 from algorithms.initializer import initialize_algorithm
+from active import initialize_selection_function, LabelManager
 from transforms import initialize_transform
 from configs.utils import populate_defaults
 import configs.supported as supported
@@ -47,6 +51,11 @@ def main():
     parser.add_argument('--n_groups_per_batch', type=int)
     parser.add_argument('--batch_size', type=int)
     parser.add_argument('--eval_loader', choices=['standard'], default='standard')
+
+    # Active Learning
+    parser.add_argument('--active_learning', type=parse_bool, const=True, nargs='?')
+    parser.add_argument('--selection_function', choices=supported.selection_functions)
+    parser.add_argument('--n_labeled_target', type=int)
 
     # Model
     parser.add_argument('--model', choices=supported.models)
@@ -196,6 +205,9 @@ def main():
                 batch_size=config.batch_size,
                 **config.loader_kwargs)
 
+        if 'test' in split and config.active_learning:
+            datasets[split]['label_manager'] = LabelManager(datasets[split]['dataset'])
+
         # Set fields
         datasets[split]['split'] = split
         datasets[split]['name'] = full_dataset.split_names[split]
@@ -242,7 +254,7 @@ def main():
                     latest_epoch = max(epochs)
                     save_path = model_prefix + f'epoch:{latest_epoch}_model.pth'
             try:
-                prev_epoch, best_val_metric = load(algorithm, save_path)
+                prev_epoch, best_val_metric = load(algorithm, save_path, config.device)
                 epoch_offset = prev_epoch + 1
                 logger.write(f'Resuming from epoch {epoch_offset} with best val metric {best_val_metric}')
                 resume_success = True
@@ -268,7 +280,7 @@ def main():
             eval_model_path = model_prefix + 'epoch:best_model.pth'
         else:
             eval_model_path = model_prefix +  f'epoch:{config.eval_epoch}_model.pth'
-        best_epoch, best_val_metric = load(algorithm, eval_model_path)
+        best_epoch, best_val_metric = load(algorithm, eval_model_path, config.device)
         if config.eval_epoch is None:
             epoch = best_epoch
         else:
