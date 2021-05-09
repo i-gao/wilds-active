@@ -200,6 +200,6 @@ def get_model_prefix(dataset, config):
     dataset_name = dataset['dataset'].dataset_name
     replicate_str = get_replicate_str(dataset, config)
     prefix = os.path.join(
-        config.log_dir,
+        config.load_dir,
         f"{dataset_name}_{replicate_str}_")
     return prefix

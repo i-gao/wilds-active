@@ -28,6 +28,7 @@ def main():
     parser.add_argument('--algorithm', required=True, choices=supported.algorithms)
     parser.add_argument('--root_dir', required=True,
                         help='The directory where [dataset]/data can be found (or should be downloaded to, if it does not exist).')
+    parser.add_argument('--load_dir', default=None, type=str, help="Path to log dir of model to load and continue from")
 
     # Dataset
     parser.add_argument('--split_scheme', help='Identifies how the train/val/test split is constructed. Choices are dataset-specific.')
@@ -236,7 +237,7 @@ def main():
             if not os.path.exists(save_path):
                 epochs = [
                     int(file.split('epoch:')[1].split('_')[0])
-                    for file in os.listdir(config.log_dir) if file.endswith('.pth')]
+                    for file in os.listdir(config.load_dir) if file.endswith('.pth')]
                 if len(epochs) > 0:
                     latest_epoch = max(epochs)
                     save_path = model_prefix + f'epoch:{latest_epoch}_model.pth'
@@ -251,6 +252,9 @@ def main():
         if resume_success == False:
             epoch_offset=0
             best_val_metric=None
+
+        import pdb
+        pdb.set_trace()
 
         train(
             algorithm=algorithm,
