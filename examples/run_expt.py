@@ -230,7 +230,7 @@ def main():
         ## Load saved results if resuming
         ## If doing active learning, expects to load a model trained on source
         resume_success = False
-        if config.resume or config.active_learning:
+        if config.resume:
             save_path = model_prefix + 'epoch:last_model.pth'
             if not os.path.exists(save_path):
                 epochs = [
@@ -243,6 +243,15 @@ def main():
                 prev_epoch, best_val_metric = load(algorithm, save_path, config.device)
                 epoch_offset = prev_epoch + 1
                 logger.write(f'Resuming from epoch {epoch_offset} with best val metric {best_val_metric}')
+                resume_success = True
+            except FileNotFoundError:
+                pass
+        elif config.active_learning:
+            save_path = model_prefix + 'epoch:best_model.pth'
+            try:
+                best_epoch, best_val_metric = load(algorithm, save_path, config.device)
+                epoch_offset = 0
+                logger.write(f'Using model from epoch {best_epoch} with best val metric {best_val_metric}')
                 resume_success = True
             except FileNotFoundError:
                 pass
