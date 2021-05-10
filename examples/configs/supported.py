@@ -35,4 +35,4 @@ models = ['resnet18_ms', 'resnet50', 'resnet34', 'wideresnet50',
 algorithms = ['ERM', 'groupDRO', 'deepCORAL', 'IRM']
 optimizers = ['SGD', 'Adam', 'AdamW']
 schedulers = ['linear_schedule_with_warmup', 'ReduceLROnPlateau', 'StepLR']
-selection_functions = ['random']
+selection_functions = ['random', 'uncertainty']

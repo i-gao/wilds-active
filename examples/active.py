@@ -2,16 +2,6 @@ from wilds.datasets.wilds_dataset import WILDSSubset
 from torch.utils.data import Subset
 from utils import configure_split_dict
 from train import train
-import numpy as np
-
-def initialize_selection_function(config, model):
-    # initialize selection function to choose target examples to label
-    if config.selection_function=='random':
-        params = filter(lambda p: p.requires_grad, model.parameters())
-        selection_fn = random_sampling
-    else:
-        raise ValueError(f'Selection Function {config.selection_function} not recognized.')
-    return selection_fn
 
 class LabelManager:
     """
@@ -38,14 +28,20 @@ class LabelManager:
         self.idx_labels_revealed.update(idx)
         print(f"Total Labels Revealed: {len(self.idx_labels_revealed)}")
 
-def run_active_learning(algorithm, datasets, general_logger, grouper, config):
+def run_active_learning(selection_fn, few_shot_algorithm, datasets, general_logger, grouper, config):
+    label_manager = datasets['test']['label_manager']
     for round in range(config.n_rounds):
-        general_logger.write('\nRound [%d]:\n' % round)
-
+        general_logger.write('\nActive Learning Round [%d]:\n' % round)
+        
         # First run selection function
-        labeled_test, unlabeled_test = random_sampling(datasets['test']['label_manager'], config.n_labels_round)
+        ## Train selection function
+        # selection_fn.update()
+        ## Get a few labels
+        selection_fn.select(label_manager=label_manager, K=config.n_labels_round)
+        
+        ## Set up dataloaders. Must be reloaded each time more labels are revealed.
         datasets['labeled_test'] = configure_split_dict(
-            data=labeled_test,
+            data=label_manager.get_labeled_subset(),
             split="test",
             split_name="labeled_test",
             train=True,
@@ -53,7 +49,7 @@ def run_active_learning(algorithm, datasets, general_logger, grouper, config):
             grouper=grouper,
             config=config)
         datasets['unlabeled_test'] = configure_split_dict(
-            data=unlabeled_test,
+            data=label_manager.get_unlabeled_subset(),
             split="test",
             split_name="unlabeled_test",
             train=False,
@@ -61,22 +57,12 @@ def run_active_learning(algorithm, datasets, general_logger, grouper, config):
             verbose=True,
             config=config)
 
-        # Then run training
+        # Then few-shot train on the new labels
         train(
-            algorithm=algorithm,
+            algorithm=few_shot_algorithm,
             datasets=datasets,
             train_split="labeled_test",
             general_logger=general_logger,
             config=config,
             epoch_offset=0,
             best_val_metric=None)
-
-
-#### SELECTION FUNCTIONS ####
-def random_sampling(label_manager, n_labels_round):
-    reveal = np.random.choice(
-        list(label_manager.idx - label_manager.idx_labels_revealed),
-        size=n_labels_round
-    )
-    label_manager.reveal_labels(reveal)
-    return label_manager.get_labeled_subset(), label_manager.get_unlabeled_subset()

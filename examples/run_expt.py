@@ -18,6 +18,7 @@ from utils import set_seed, Logger, log_config, ParseKwargs, load, log_group_dat
 from train import train, evaluate
 from algorithms.initializer import initialize_algorithm
 from active import run_active_learning, LabelManager
+from selection_fn import initialize_selection_function
 from transforms import initialize_transform
 from configs.utils import populate_defaults
 import configs.supported as supported
@@ -220,8 +221,9 @@ def main():
     model_prefix = get_model_prefix(datasets['train'], config)
     if not config.eval_only:
         ## Load saved results if resuming
+        ## If doing active learning, expects to load a model trained on source
         resume_success = False
-        if config.resume:
+        if config.resume or config.active_learning:
             save_path = model_prefix + 'epoch:last_model.pth'
             if not os.path.exists(save_path):
                 epochs = [
@@ -243,8 +245,10 @@ def main():
             best_val_metric=None
 
         if config.active_learning:
+            selection_fn = initialize_selection_function(config, algorithm)
             run_active_learning(
-                algorithm=algorithm,
+                selection_fn=selection_fn,
+                few_shot_algorithm=algorithm,
                 datasets=datasets,
                 general_logger=logger,
                 grouper=train_grouper,
