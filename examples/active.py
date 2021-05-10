@@ -1,6 +1,6 @@
 from wilds.datasets.wilds_dataset import WILDSSubset
 from torch.utils.data import Subset
-from utils import configure_split_dict
+from utils import configure_split_dict, configure_loaders
 from train import train
 
 class LabelManager:
@@ -40,6 +40,25 @@ class LabelManager:
 
 def run_active_learning(selection_fn, few_shot_algorithm, datasets, general_logger, grouper, config):
     label_manager = datasets['test']['label_manager']
+
+    # Add labeled test / unlabeled test splits.
+    datasets['labeled_test'] = configure_split_dict(
+        data=None,
+        split="labeled_test",
+        split_name="labeled_test",
+        train=True,
+        verbose=True,
+        grouper=grouper,
+        config=config)
+    datasets['unlabeled_test'] = configure_split_dict(
+        data = None,
+        split="unlabeled_test",
+        split_name="unlabeled_test",
+        train=False,
+        grouper=None,
+        verbose=True,
+        config=config)
+
     for round in range(config.n_rounds):
         general_logger.write('\nActive Learning Round [%d]:\n' % round)
         
@@ -49,22 +68,18 @@ def run_active_learning(selection_fn, few_shot_algorithm, datasets, general_logg
         ## Get a few labels
         selection_fn.select(label_manager=label_manager, K=config.n_labels_round)
         
-        ## Set up dataloaders. Must be reloaded each time more labels are revealed.
-        datasets['labeled_test'] = configure_split_dict(
+        ## Refresh dataloaders
+        configure_loaders(
+            split_dict=datasets['labeled_test'],
             data=label_manager.get_labeled_subset(),
-            split="test",
-            split_name="labeled_test",
             train=True,
-            verbose=True,
             grouper=grouper,
             config=config)
-        datasets['unlabeled_test'] = configure_split_dict(
+        configure_loaders(
+            split_dict=datasets['unlabeled_test'],
             data=label_manager.get_unlabeled_subset(),
-            split="test",
-            split_name="unlabeled_test",
             train=False,
             grouper=None,
-            verbose=True,
             config=config)
 
         # Then few-shot train on the new labels

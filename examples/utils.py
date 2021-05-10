@@ -179,15 +179,38 @@ def initialize_wandb(config):
                project=f"wilds")
     wandb.config.update(config)
 
-def configure_split_dict(split, data, split_name, verbose, config, train=False, grouper=None):
+def configure_split_dict(split, data, split_name, train, verbose, grouper, config):
+    split_dict = defaultdict(dict)
+
+    # Loaders and dict
+    if data is not None: configure_loaders(
+        split_dict=split_dict,
+        data=data,
+        train=train,
+        grouper=grouper,
+        config=config)
+
+    # Set fields
+    split_dict['split'] = split
+    split_dict['name'] = split_name
+    split_dict['verbose'] = verbose 
+
+    # Loggers
+    split_dict['eval_logger'] = BatchLogger(
+        os.path.join(config.log_dir, f'{split}_eval.csv'), mode=config.mode, use_wandb=(config.use_wandb and verbose))
+    split_dict['algo_logger'] = BatchLogger(
+        os.path.join(config.log_dir, f'{split}_algo.csv'), mode=config.mode, use_wandb=(config.use_wandb and verbose))
+    return split_dict
+
+
+def configure_loaders(split_dict, data, config, train=False, grouper=None):
     """
-    original code block in run_expt; factored out to make loading AL easier.
+    modifies split_dict ['dataset'] and ['loader'] keys in place
     Args:
         - data is expected to be a WILDSSubset
         - train is a boolean explaining whether this data will be trained on 
           (e.g. labeled-test is from the test split but trained on)
     """
-    split_dict = defaultdict(dict)
     split_dict['dataset'] = data
     if train:
         split_dict['loader'] = get_train_loader(
@@ -206,22 +229,6 @@ def configure_split_dict(split, data, split_name, verbose, config, train=False, 
             grouper=grouper,
             batch_size=config.batch_size,
             **config.loader_kwargs)
-
-    # Set fields
-    split_dict['split'] = split
-    split_dict['name'] = split_name
-    split_dict['verbose'] = verbose
-
-    # Loggers
-    split_dict['eval_logger'] = BatchLogger(
-        os.path.join(config.log_dir, f'{split}_eval.csv'), mode=config.mode, use_wandb=(config.use_wandb and verbose))
-    split_dict['algo_logger'] = BatchLogger(
-        os.path.join(config.log_dir, f'{split}_algo.csv'), mode=config.mode, use_wandb=(config.use_wandb and verbose))
-
-    if config.use_wandb:
-        initialize_wandb(config)
-
-    return split_dict
 
 def save_pred(y_pred, csv_path):
     df = pd.DataFrame(y_pred.numpy())

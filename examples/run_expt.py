@@ -60,8 +60,7 @@ def main():
     parser.add_argument('--n_rounds', type=int, default=1, help="number of times to repeat the selection-train cycle")
     parser.add_argument('--few_shot_algorithm', choices=supported.few_shot_algorithms)
     parser.add_argument('--few_shot_kwargs', nargs='*', action=ParseKwargs, default={},
-        help='keyword arguments for few shot algorithm passed as key1=value1 key2=value2')
-
+        help='keyword arguments for few shot algorithm initialization passed as key1=value1 key2=value2')
 
     # Model
     parser.add_argument('--model', choices=supported.models)
@@ -205,6 +204,9 @@ def main():
         if 'test' in split and config.active_learning:
             datasets[split]['label_manager'] = LabelManager(datasets[split]['dataset'])
 
+    if config.use_wandb:
+        initialize_wandb(config)
+
     # Logging dataset info
     # Show class breakdown if feasible
     if config.no_group_logging and full_dataset.is_classification and full_dataset.y_size==1 and full_dataset.n_classes <= 10:
@@ -251,7 +253,7 @@ def main():
 
         if config.active_learning:
             selection_fn = initialize_selection_function(config, algorithm)
-            few_shot_algorithm = initialize_few_shot_algorithm(config, algorithm) 
+            few_shot_algorithm = initialize_few_shot_algorithm(config, algorithm)
             run_active_learning(
                 selection_fn=selection_fn,
                 few_shot_algorithm=few_shot_algorithm,
