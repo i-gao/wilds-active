@@ -11,22 +11,32 @@ class LabelManager:
     def __init__(self, subset: WILDSSubset):
         self.dataset = subset.dataset
         self.transform = subset.transform
-        self.idx = set(subset.indices)
-        self.idx_labels_revealed = set()
+        self._idx = set(subset.indices)
+        self._idx_labels_revealed = set()
 
     def get_unlabeled_subset(self):
-        return WILDSSubset(self.dataset, list(self.idx - self.idx_labels_revealed), self.transform)
+        return WILDSSubset(self.dataset, self.unlabeled_indices, self.transform)
 
     def get_labeled_subset(self):
-        return WILDSSubset(self.dataset, list(self.idx_labels_revealed), self.transform)
+        return WILDSSubset(self.dataset, self.labeled_indices, self.transform)
 
     def reveal_labels(self, idx: [int]):
         """Remembers these examples as having labels revealed, 
         so these examples will be returned via a different data loader"""
-        if not (set(idx).issubset(self.idx)):
-            raise ValueError(f'Some indices are invalid.')
-        self.idx_labels_revealed.update(idx)
-        print(f"Total Labels Revealed: {len(self.idx_labels_revealed)}")
+        if not (set(idx).issubset(self._idx)):
+            raise ValueError('Some indices are invalid.')
+        if len(set(idx).intersection(self._idx_labels_revealed)): 
+            raise ValueError('Some indices have already been selected.')
+        self._idx_labels_revealed.update(idx)
+        print(f"Total Labels Revealed: {len(self._idx_labels_revealed)}")
+
+    @property
+    def labeled_indices(self):
+        return list(self._idx_labels_revealed) 
+
+    @property
+    def unlabeled_indices(self):
+        return list(self._idx - self._idx_labels_revealed)
 
 def run_active_learning(selection_fn, few_shot_algorithm, datasets, general_logger, grouper, config):
     label_manager = datasets['test']['label_manager']

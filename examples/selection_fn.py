@@ -52,7 +52,7 @@ class RandomSampling(SelectionFunction):
     
     def select(self, label_manager, K):
         reveal = np.random.choice(
-            list(label_manager.idx - label_manager.idx_labels_revealed),
+            label_manager.unlabeled_indices,
             size=K
         )
         label_manager.reveal_labels(reveal)
@@ -86,5 +86,5 @@ class UncertaintySampling(SelectionFunction):
 
         # Choose K most uncertain to reval labels
         _, top_idxs = torch.topk(-certainties, K)
-        reveal = torch.as_tensor(list(label_manager.idx))[top_idxs]
-        label_manager.reveal_labels(reveal.tolist())
+        reveal = torch.as_tensor(label_manager.unlabeled_indices)[top_idxs].tolist()
+        label_manager.reveal_labels(reveal)
