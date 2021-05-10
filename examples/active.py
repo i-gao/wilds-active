@@ -39,9 +39,6 @@ class LabelManager:
         print(f"Total Labels Revealed: {len(self.idx_labels_revealed)}")
 
 def run_active_learning(algorithm, datasets, general_logger, grouper, config):
-    import pdb
-    pdb.set_trace()
-
     for round in range(config.n_rounds):
         general_logger.write('\nRound [%d]:\n' % round)
 
@@ -67,7 +64,8 @@ def run_active_learning(algorithm, datasets, general_logger, grouper, config):
         # Then run training
         train(
             algorithm=algorithm,
-            datasets=few_shot_datasets,
+            datasets=datasets,
+            train_split="labeled_test",
             general_logger=general_logger,
             config=config,
             epoch_offset=0,
