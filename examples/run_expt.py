@@ -18,7 +18,7 @@ from wilds.common.grouper import CombinatorialGrouper
 from utils import set_seed, Logger, BatchLogger, log_config, ParseKwargs, load, initialize_wandb, log_group_data, parse_bool, get_model_prefix
 from train import train, evaluate
 from algorithms.initializer import initialize_algorithm
-from active import initialize_selection_function, LabelManager
+from active import run_active_learning, LabelManager
 from transforms import initialize_transform
 from configs.utils import populate_defaults
 import configs.supported as supported
@@ -55,7 +55,8 @@ def main():
     # Active Learning
     parser.add_argument('--active_learning', type=parse_bool, const=True, nargs='?')
     parser.add_argument('--selection_function', choices=supported.selection_functions)
-    parser.add_argument('--n_labeled_target', type=int)
+    parser.add_argument('--n_labels_round', type=int, help="number of labels to actively learn each round")
+    parser.add_argument('--n_rounds', type=int, default=1, help="number of times to repeat the selection-train cycle")
 
     # Model
     parser.add_argument('--model', choices=supported.models)
@@ -268,13 +269,22 @@ def main():
         import pdb
         pdb.set_trace()
 
-        train(
-            algorithm=algorithm,
-            datasets=datasets,
-            general_logger=logger,
-            config=config,
-            epoch_offset=epoch_offset,
-            best_val_metric=best_val_metric)
+        if config.active_learning:
+            run_active_learning(
+                algorithm=algorithm,
+                datasets=datasets,
+                general_logger=logger,
+                config=config,
+                epoch_offset=epoch_offset,
+                best_val_metric=best_val_metric)
+        else: 
+            train(
+                algorithm=algorithm,
+                datasets=datasets,
+                general_logger=logger,
+                config=config,
+                epoch_offset=epoch_offset,
+                best_val_metric=best_val_metric)
     else:
         if config.eval_epoch is None:
             eval_model_path = model_prefix + 'epoch:best_model.pth'
