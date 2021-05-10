@@ -4,12 +4,17 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-def initialize_selection_function(config, uncertainty_model):
+def initialize_selection_function(config, orig_algorithm, few_shot_algorithm):
     # initialize selection function to choose target examples to label
     if config.selection_function=='random':
         selection_fn = RandomSampling()
     elif config.selection_function=='uncertainty':
-        selection_fn = UncertaintySampling(uncertainty_model, config)
+        if config.few_shot_kwargs.get('reset_classifier'): 
+            import warnings
+            warnings.warn("Running uncertainty sampling using a randomly initialized logits layer.")
+        selection_fn = UncertaintySampling(few_shot_algorithm, config)
+    elif config.selection_function=='uncertainty_fixed':
+        selection_fn = UncertaintySampling(orig_algorithm, config)
     else:
         raise ValueError(f'Selection Function {config.selection_function} not recognized.')
     return selection_fn

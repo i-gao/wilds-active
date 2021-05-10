@@ -252,8 +252,8 @@ def main():
             best_val_metric=None
 
         if config.active_learning:
-            selection_fn = initialize_selection_function(config, algorithm)
             few_shot_algorithm = initialize_few_shot_algorithm(config, algorithm)
+            selection_fn = initialize_selection_function(config, algorithm, few_shot_algorithm)
             run_active_learning(
                 selection_fn=selection_fn,
                 few_shot_algorithm=few_shot_algorithm,
