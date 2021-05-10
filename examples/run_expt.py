@@ -19,6 +19,7 @@ from train import train, evaluate
 from algorithms.initializer import initialize_algorithm
 from active import run_active_learning, LabelManager
 from selection_fn import initialize_selection_function
+from few_shot import initialize_few_shot_algorithm
 from transforms import initialize_transform
 from configs.utils import populate_defaults
 import configs.supported as supported
@@ -57,6 +58,10 @@ def main():
     parser.add_argument('--selection_function', choices=supported.selection_functions)
     parser.add_argument('--n_labels_round', type=int, help="number of labels to actively learn each round")
     parser.add_argument('--n_rounds', type=int, default=1, help="number of times to repeat the selection-train cycle")
+    parser.add_argument('--few_shot_algorithm', choices=supported.few_shot_algorithms)
+    parser.add_argument('--few_shot_kwargs', nargs='*', action=ParseKwargs, default={},
+        help='keyword arguments for few shot algorithm passed as key1=value1 key2=value2')
+
 
     # Model
     parser.add_argument('--model', choices=supported.models)
@@ -246,9 +251,10 @@ def main():
 
         if config.active_learning:
             selection_fn = initialize_selection_function(config, algorithm)
+            few_shot_algorithm = initialize_few_shot_algorithm(config, algorithm) 
             run_active_learning(
                 selection_fn=selection_fn,
-                few_shot_algorithm=algorithm,
+                few_shot_algorithm=few_shot_algorithm,
                 datasets=datasets,
                 general_logger=logger,
                 grouper=train_grouper,
