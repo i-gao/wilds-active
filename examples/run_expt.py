@@ -12,10 +12,9 @@ from collections import defaultdict
 sys.path.insert(1, os.path.join(sys.path[0], '..'))
 
 import wilds
-from wilds.common.data_loaders import get_train_loader, get_eval_loader
 from wilds.common.grouper import CombinatorialGrouper
 
-from utils import set_seed, Logger, BatchLogger, log_config, ParseKwargs, load, initialize_wandb, log_group_data, parse_bool, get_model_prefix
+from utils import set_seed, Logger, log_config, ParseKwargs, load, log_group_data, parse_bool, get_model_prefix, configure_split_dict
 from train import train, evaluate
 from algorithms.initializer import initialize_algorithm
 from active import run_active_learning, LabelManager
@@ -128,18 +127,18 @@ def main():
 
     ## Initialize logs
     if os.path.exists(config.log_dir) and config.resume:
-        resume=True
-        mode='a'
+        config.resume=True
+        config.mode='a'
     elif os.path.exists(config.log_dir) and config.eval_only:
-        resume=False
-        mode='a'
+        config.resume=False
+        config.mode='a'
     else:
-        resume=False
-        mode='w'
+        config.resume=False
+        config.mode='w'
 
     if not os.path.exists(config.log_dir):
         os.makedirs(config.log_dir)
-    logger = Logger(os.path.join(config.log_dir, 'log.txt'), mode)
+    logger = Logger(os.path.join(config.log_dir, 'log.txt'), config.mode)
 
     # Record config
     log_config(config, logger)
@@ -182,46 +181,23 @@ def main():
         else:
             transform = eval_transform
             verbose = False
-        # Get subset
-        datasets[split]['dataset'] = full_dataset.get_subset(
+
+        data = full_dataset.get_subset(
             split,
             frac=config.frac,
             transform=transform)
-
-        if split == 'train':
-            datasets[split]['loader'] = get_train_loader(
-                loader=config.train_loader,
-                dataset=datasets[split]['dataset'],
-                batch_size=config.batch_size,
-                uniform_over_groups=config.uniform_over_groups,
-                grouper=train_grouper,
-                distinct_groups=config.distinct_groups,
-                n_groups_per_batch=config.n_groups_per_batch,
-                **config.loader_kwargs)
-        else:
-            datasets[split]['loader'] = get_eval_loader(
-                loader=config.eval_loader,
-                dataset=datasets[split]['dataset'],
-                grouper=train_grouper,
-                batch_size=config.batch_size,
-                **config.loader_kwargs)
-
+        
+        datasets[split] = configure_split_dict(
+            data=data,
+            split=split,
+            split_name=full_dataset.split_names[split],
+            train=(split=='train'),
+            verbose=verbose,
+            grouper=train_grouper,
+            config=config)
+ 
         if 'test' in split and config.active_learning:
             datasets[split]['label_manager'] = LabelManager(datasets[split]['dataset'])
-
-        # Set fields
-        datasets[split]['split'] = split
-        datasets[split]['name'] = full_dataset.split_names[split]
-        datasets[split]['verbose'] = verbose
-
-        # Loggers
-        datasets[split]['eval_logger'] = BatchLogger(
-            os.path.join(config.log_dir, f'{split}_eval.csv'), mode=mode, use_wandb=(config.use_wandb and verbose))
-        datasets[split]['algo_logger'] = BatchLogger(
-            os.path.join(config.log_dir, f'{split}_algo.csv'), mode=mode, use_wandb=(config.use_wandb and verbose))
-
-        if config.use_wandb:
-            initialize_wandb(config)
 
     # Logging dataset info
     # Show class breakdown if feasible
@@ -245,7 +221,7 @@ def main():
     if not config.eval_only:
         ## Load saved results if resuming
         resume_success = False
-        if resume:
+        if config.resume:
             save_path = model_prefix + 'epoch:last_model.pth'
             if not os.path.exists(save_path):
                 epochs = [
@@ -266,17 +242,13 @@ def main():
             epoch_offset=0
             best_val_metric=None
 
-        import pdb
-        pdb.set_trace()
-
         if config.active_learning:
             run_active_learning(
                 algorithm=algorithm,
                 datasets=datasets,
                 general_logger=logger,
-                config=config,
-                epoch_offset=epoch_offset,
-                best_val_metric=best_val_metric)
+                grouper=train_grouper,
+                config=config)
         else: 
             train(
                 algorithm=algorithm,

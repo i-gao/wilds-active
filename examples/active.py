@@ -1,5 +1,6 @@
 from wilds.datasets.wilds_dataset import WILDSSubset
 from torch.utils.data import Subset
+from utils import configure_split_dict
 from train import train
 import numpy as np
 
@@ -37,7 +38,7 @@ class LabelManager:
         self.idx_labels_revealed.update(idx)
         print(f"Total Labels Revealed: {len(self.idx_labels_revealed)}")
 
-def run_active_learning(algorithm, datasets, general_logger, config, epoch_offset, best_val_metric):
+def run_active_learning(algorithm, datasets, general_logger, grouper, config):
     import pdb
     pdb.set_trace()
 
@@ -45,13 +46,23 @@ def run_active_learning(algorithm, datasets, general_logger, config, epoch_offse
         general_logger.write('\nRound [%d]:\n' % round)
 
         # First run selection function
-        label_manager = datasets['test']['label_manager']
-        datasets['labeled_test']['dataset'], datasets['unlabeled_test']['dataset'] = random_sampling(label_manager, config.n_labels_round)
-
-        few_shot_datasets = {
-            'train': labeled_test,
-            'val': labeled_test,
-        }
+        labeled_test, unlabeled_test = random_sampling(datasets['test']['label_manager'], config.n_labels_round)
+        datasets['labeled_test'] = configure_split_dict(
+            data=labeled_test,
+            split="test",
+            split_name="labeled_test",
+            train=True,
+            verbose=True,
+            grouper=grouper,
+            config=config)
+        datasets['unlabeled_test'] = configure_split_dict(
+            data=unlabeled_test,
+            split="test",
+            split_name="unlabeled_test",
+            train=False,
+            grouper=None,
+            verbose=True,
+            config=config)
 
         # Then run training
         train(
@@ -59,8 +70,8 @@ def run_active_learning(algorithm, datasets, general_logger, config, epoch_offse
             datasets=few_shot_datasets,
             general_logger=general_logger,
             config=config,
-            epoch_offset=epoch_offset,
-            best_val_metric=best_val_metric)
+            epoch_offset=0,
+            best_val_metric=None)
 
 
 #### SELECTION FUNCTIONS ####
