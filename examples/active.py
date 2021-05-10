@@ -59,8 +59,8 @@ def run_active_learning(selection_fn, few_shot_algorithm, datasets, general_logg
         verbose=True,
         config=config)
 
-    for round in range(config.n_rounds):
-        general_logger.write('\nActive Learning Round [%d]:\n' % round)
+    for rnd in range(config.n_rounds):
+        general_logger.write('\nActive Learning Round [%d]:\n' % rnd)
         
         # First run selection function
         ## Train selection function
@@ -90,5 +90,6 @@ def run_active_learning(selection_fn, few_shot_algorithm, datasets, general_logg
             val_split=None,
             general_logger=general_logger,
             config=config,
+            rnd=rnd,
             epoch_offset=0,
             best_val_metric=None)

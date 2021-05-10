@@ -74,7 +74,7 @@ def run_epoch(algorithm, dataset, general_logger, epoch, config, train):
     return results, epoch_y_pred
 
 
-def train(algorithm, datasets, general_logger, config, epoch_offset, best_val_metric, train_split="train", val_split="val"):
+def train(algorithm, datasets, general_logger, config, epoch_offset, best_val_metric, train_split="train", val_split="val", rnd=None):
     for epoch in range(epoch_offset, config.n_epochs):
         general_logger.write('\nEpoch [%d]:\n' % epoch)
 
@@ -83,7 +83,7 @@ def train(algorithm, datasets, general_logger, config, epoch_offset, best_val_me
 
         # Then run val
         if val_split is None: 
-            is_best = True
+            is_best = False # only save last
             best_val_metric = None
         else:
             val_results, y_pred = run_epoch(algorithm, datasets[val_split], general_logger, epoch, config, train=False)
@@ -100,9 +100,8 @@ def train(algorithm, datasets, general_logger, config, epoch_offset, best_val_me
             if is_best:
                 best_val_metric = curr_val_metric
                 general_logger.write(f'Epoch {epoch} has the best validation performance so far.\n')
-            save_pred_if_needed(y_pred, datasets[train_split], epoch, config, is_best)
-
-        save_model_if_needed(algorithm, datasets[train_split], epoch, config, is_best, best_val_metric)
+            save_pred_if_needed(y_pred, datasets[train_split], epoch, rnd, config, is_best)
+        save_model_if_needed(algorithm, datasets[train_split], epoch, rnd, config, is_best, best_val_metric)
        
         # Then run everything else
         if config.evaluate_all_splits:
@@ -111,7 +110,7 @@ def train(algorithm, datasets, general_logger, config, epoch_offset, best_val_me
             additional_splits = config.eval_splits
         for split in additional_splits:
             _, y_pred = run_epoch(algorithm, datasets[split], general_logger, epoch, config, train=False)
-            save_pred_if_needed(y_pred, datasets[split], epoch, config, is_best)
+            save_pred_if_needed(y_pred, datasets[split], epoch, rnd, config, is_best)
 
         general_logger.write('\n')
 
@@ -160,22 +159,24 @@ def log_results(algorithm, dataset, general_logger, epoch, batch_idx):
         algorithm.reset_log()
 
 
-def save_pred_if_needed(y_pred, dataset, epoch, config, is_best, force_save=False):
+def save_pred_if_needed(y_pred, dataset, epoch, rnd, config, is_best, force_save=False):
+    round_str = f'round:{rnd}_' if config.active_learning else ''
     if config.save_pred:
         prefix = get_pred_prefix(dataset, config)
         if force_save or (config.save_step is not None and (epoch + 1) % config.save_step == 0):
-            save_pred(y_pred, prefix + f'epoch:{epoch}_pred.csv')
+            save_pred(y_pred, prefix + f'{round_str}epoch:{epoch}_pred.csv')
         if config.save_last:
-            save_pred(y_pred, prefix + f'epoch:last_pred.csv')
+            save_pred(y_pred, prefix + f'{round_str}epoch:last_pred.csv')
         if config.save_best and is_best:
-            save_pred(y_pred, prefix + f'epoch:best_pred.csv')
+            save_pred(y_pred, prefix + f'{round_str}epoch:best_pred.csv')
 
 
-def save_model_if_needed(algorithm, dataset, epoch, config, is_best, best_val_metric):
+def save_model_if_needed(algorithm, dataset, epoch, rnd, config, is_best, best_val_metric):
+    round_str = f'round:{rnd}_' if config.active_learning else ''
     prefix = get_model_prefix(dataset, config)
     if config.save_step is not None and (epoch + 1) % config.save_step == 0:
-        save_model(algorithm, epoch, best_val_metric, prefix + f'epoch:{epoch}_model.pth')
+        save_model(algorithm, epoch, best_val_metric, prefix + f'{round_str}epoch:{epoch}_model.pth')
     if config.save_last:
-        save_model(algorithm, epoch, best_val_metric, prefix + 'epoch:last_model.pth')
+        save_model(algorithm, epoch, best_val_metric, prefix + f'{round_str}epoch:last_model.pth')
     if config.save_best and is_best:
-        save_model(algorithm, epoch, best_val_metric, prefix + 'epoch:best_model.pth')
+        save_model(algorithm, epoch, best_val_metric, prefix + f'{round_str}epoch:best_model.pth')
