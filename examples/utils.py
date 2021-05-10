@@ -243,10 +243,10 @@ def get_pred_prefix(dataset, config):
         f"{dataset_name}_split:{split}_{replicate_str}_")
     return prefix
 
-def get_model_prefix(dataset, config):
+def get_model_prefix(dataset, config, load=False):
     dataset_name = dataset['dataset'].dataset_name
     replicate_str = get_replicate_str(dataset, config)
     prefix = os.path.join(
-        config.load_dir,
+        config.load_dir if load else config.log_dir,
         f"{dataset_name}_{replicate_str}_")
     return prefix

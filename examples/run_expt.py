@@ -218,7 +218,7 @@ def main():
         datasets=datasets,
         train_grouper=train_grouper)
 
-    model_prefix = get_model_prefix(datasets['train'], config)
+    model_prefix = get_model_prefix(datasets['train'], config, load=True)
     if not config.eval_only:
         ## Load saved results if resuming
         ## If doing active learning, expects to load a model trained on source
