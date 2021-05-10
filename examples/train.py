@@ -82,24 +82,28 @@ def train(algorithm, datasets, general_logger, config, epoch_offset, best_val_me
         run_epoch(algorithm, datasets[train_split], general_logger, epoch, config, train=True)
 
         # Then run val
-        val_results, y_pred = run_epoch(algorithm, datasets[val_split], general_logger, epoch, config, train=False)
-        curr_val_metric = val_results[config.val_metric]
-        general_logger.write(f'Validation {config.val_metric}: {curr_val_metric:.3f}\n')
-
-        if best_val_metric is None:
+        if val_split is None: 
             is_best = True
+            best_val_metric = None
         else:
-            if config.val_metric_decreasing:
-                is_best = curr_val_metric < best_val_metric
+            val_results, y_pred = run_epoch(algorithm, datasets[val_split], general_logger, epoch, config, train=False)
+            curr_val_metric = val_results[config.val_metric]
+            general_logger.write(f'Validation {config.val_metric}: {curr_val_metric:.3f}\n')
+
+            if best_val_metric is None:
+                is_best = True
             else:
-                is_best = curr_val_metric > best_val_metric
-        if is_best:
-            best_val_metric = curr_val_metric
-            general_logger.write(f'Epoch {epoch} has the best validation performance so far.\n')
+                if config.val_metric_decreasing:
+                    is_best = curr_val_metric < best_val_metric
+                else:
+                    is_best = curr_val_metric > best_val_metric
+            if is_best:
+                best_val_metric = curr_val_metric
+                general_logger.write(f'Epoch {epoch} has the best validation performance so far.\n')
+            save_pred_if_needed(y_pred, datasets[train_split], epoch, config, is_best)
 
-        save_model_if_needed(algorithm, datasets[val_split], epoch, config, is_best, best_val_metric)
-        save_pred_if_needed(y_pred, datasets[val_split], epoch, config, is_best)
-
+        save_model_if_needed(algorithm, datasets[train_split], epoch, config, is_best, best_val_metric)
+       
         # Then run everything else
         if config.evaluate_all_splits:
             additional_splits = [split for split in datasets.keys() if split not in ['train','val']]

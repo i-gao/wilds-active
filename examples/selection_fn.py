@@ -19,13 +19,12 @@ class SelectionFunction():
     Abstract class for a function that selects K examples to reveal labels for.
     Works in conjunction with a LabelManager.
     """
-    def __init__(self, uncertainty_model=None, is_training=False, config=None):
+    def __init__(self, is_trainable=False, config=None):
         """
         Args:
             - uncertainty_model: Algorithm
         """
-        self.is_training = is_training
-        self.uncertainty_model = uncertainty_model
+        self.is_trainable = is_trainable
         self.config = config
 
     # def update(self):
@@ -34,7 +33,7 @@ class SelectionFunction():
     #     Args:
     #         - batch (tuple of Tensors): a batch of data yielded by data loaders
     #     """
-    #     assert(self.is_training and self.uncertainty_model is not None, "This selection function does not use a trainable uncertainty model.")
+    #     assert(self.is_trainable and self.uncertainty_model is not None, "This selection function does not use a trainable uncertainty model.")
     #     return self.uncertainty_model.update(batch)
 
     def select(self, label_manager, K):
@@ -48,8 +47,7 @@ class SelectionFunction():
 class RandomSampling(SelectionFunction):
     def __init__(self):
         super().__init__(
-            uncertainty_model=None,
-            is_training=False
+            is_trainable=False
         )
     
     def select(self, label_manager, K):
@@ -61,9 +59,9 @@ class RandomSampling(SelectionFunction):
 
 class UncertaintySampling(SelectionFunction):
     def __init__(self, uncertainty_model, config):
+        self.uncertainty_model = uncertainty_model
         super().__init__(
-            uncertainty_model=uncertainty_model,
-            is_training=False,
+            is_trainable=False,
             config=config
         )
 

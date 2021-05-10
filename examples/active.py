@@ -62,6 +62,7 @@ def run_active_learning(selection_fn, few_shot_algorithm, datasets, general_logg
             algorithm=few_shot_algorithm,
             datasets=datasets,
             train_split="labeled_test",
+            val_split=None,
             general_logger=general_logger,
             config=config,
             epoch_offset=0,
