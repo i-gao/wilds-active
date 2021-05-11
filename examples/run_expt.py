@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 import torchvision
 import sys
+import re
 from collections import defaultdict
 
 # TODO: This is needed to test the WILDS package locally. Remove later -Tony
@@ -247,7 +248,8 @@ def main():
             except FileNotFoundError:
                 pass
         elif config.active_learning:
-            save_path = model_prefix + 'epoch:best_model.pth'
+            # hack: assuming that all models are trained on seed 0, make sure to load seed 0 model
+            save_path = re.sub("seed:.", "seed:0", model_prefix) + 'epoch:best_model.pth'
             try:
                 best_epoch, best_val_metric = load(algorithm, save_path, config.device)
                 epoch_offset = 0
