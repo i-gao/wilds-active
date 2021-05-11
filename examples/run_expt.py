@@ -264,7 +264,7 @@ def main():
 
         if config.active_learning:
             few_shot_algorithm = initialize_few_shot_algorithm(config, algorithm)
-            selection_fn = initialize_selection_function(config, algorithm, few_shot_algorithm)
+            selection_fn = initialize_selection_function(config, algorithm, few_shot_algorithm, grouper=train_grouper)
             run_active_learning(
                 selection_fn=selection_fn,
                 few_shot_algorithm=few_shot_algorithm,
