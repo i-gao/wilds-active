@@ -108,9 +108,10 @@ def train(algorithm, datasets, general_logger, config, epoch_offset, best_val_me
             additional_splits = [split for split in datasets.keys() if split not in ['train','val']]
         else:
             additional_splits = config.eval_splits
-        for split in additional_splits:
-            _, y_pred = run_epoch(algorithm, datasets[split], general_logger, epoch, config, train=False)
-            save_pred_if_needed(y_pred, datasets[split], epoch, rnd, config, is_best)
+        if epoch % config.eval_additional_every == 0:
+            for split in additional_splits:
+                _, y_pred = run_epoch(algorithm, datasets[split], general_logger, epoch, config, train=False)
+                save_pred_if_needed(y_pred, datasets[split], epoch, rnd, config, is_best)
 
         general_logger.write('\n')
 
