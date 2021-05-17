@@ -16,6 +16,17 @@ def initialize_few_shot_algorithm(config, algorithm):
                 algorithm.model.classifier.in_features, 
                 algorithm.model.classifier.out_features, 
                 bias=True)
+    elif config.few_shot_algorithm == "linear_probe":
+        few_shot_algorithm = copy.deepcopy(algorithm)
+        # freeze all 
+        for param in few_shot_algorithm.model.features.parameters():
+            param.requires_grad = False
+        if config.few_shot_kwargs.get('reset_classifier'): 
+            # re-initialize the last linear layer
+            few_shot_algorithm.model.classifier = nn.Linear(
+                algorithm.model.classifier.in_features, 
+                algorithm.model.classifier.out_features, 
+                bias=True)
     else:
         raise ValueError(f'Selection Function {config.selection_function} not recognized.')
     return few_shot_algorithm 

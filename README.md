@@ -6,4 +6,4 @@ python /u/scr/irena/wilds-active/examples/run_expt.py --root_dir /u/scr/nlp/wild
 
 Supported:
 * Selection Functions: `random, uncertainty, uncertainty_fixed`
-* FSL: `finetune`
+* FSL: `finetune, linear_probe`

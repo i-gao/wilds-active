@@ -257,6 +257,7 @@ def main():
                 logger.write(f'Using model from epoch {best_epoch} with best val metric {best_val_metric}')
                 resume_success = True
             except FileNotFoundError:
+                logger.write("Could not find that model. Starting from scratch.")
                 pass
 
         if resume_success == False:
