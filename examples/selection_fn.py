@@ -79,6 +79,7 @@ class StratifiedSampling(SelectionFunction):
         groups, group_counts = self.grouper.metadata_to_group(
             label_manager.get_unlabeled_subset().metadata_array,
             return_counts=True)
+        group_counts = group_counts.numpy().astype('float64')
         group_choices = np.random.choice(
             np.arange(len(group_counts)),
             K,
