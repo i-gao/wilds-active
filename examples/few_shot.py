@@ -8,25 +8,23 @@ def initialize_few_shot_algorithm(config, algorithm):
     Args:
         - algorithm: original algorithm class containing model trained on source
     """
+    few_shot_algorithm = copy.deepcopy(algorithm)
+    *_, last = few_shot_algorithm.modules()
     if config.few_shot_algorithm == "finetune":
-        few_shot_algorithm = copy.deepcopy(algorithm)
         if config.few_shot_kwargs.get('reset_classifier'): 
             # re-initialize the last linear layer
-            few_shot_algorithm.model.classifier = nn.Linear(
-                algorithm.model.classifier.in_features, 
-                algorithm.model.classifier.out_features, 
-                bias=True)
+            last.reset_parameters()
     elif config.few_shot_algorithm == "linear_probe":
-        few_shot_algorithm = copy.deepcopy(algorithm)
         # freeze all 
-        for param in few_shot_algorithm.model.features.parameters():
+        for param in few_shot_algorithm.model.parameters():
             param.requires_grad = False
+        for param in last.parameters():
+            param.requires_grad = True
         if config.few_shot_kwargs.get('reset_classifier'): 
             # re-initialize the last linear layer
-            few_shot_algorithm.model.classifier = nn.Linear(
-                algorithm.model.classifier.in_features, 
-                algorithm.model.classifier.out_features, 
-                bias=True)
+            last.reset_parameters()
     else:
         raise ValueError(f'Selection Function {config.selection_function} not recognized.')
+    # sanity check
+    print(f"\nNumber of unfrozen parameters: {len(list(filter(lambda p: p.requires_grad, few_shot_algorithm.model.parameters())))}")
     return few_shot_algorithm 
