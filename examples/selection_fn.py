@@ -18,8 +18,8 @@ def initialize_selection_function(config, orig_algorithm, few_shot_algorithm, gr
         selection_fn = UncertaintySampling(few_shot_algorithm, config)
     elif config.selection_function=='uncertainty_fixed':
         selection_fn = UncertaintySampling(orig_algorithm, config)
-    elif config.selection_function=='uncertainty_accuracy_oracle':
-        selection_fn = UncertaintyAccuracyOracle(few_shot_algorithm, config)
+    elif config.selection_function=='confidently_incorrect':
+        selection_fn = ConfidentlyIncorrect(few_shot_algorithm, config)
     else:
         raise ValueError(f'Selection Function {config.selection_function} not recognized.')
     return selection_fn
@@ -127,7 +127,7 @@ class UncertaintySampling(SelectionFunction):
         reveal = torch.as_tensor(label_manager.unlabeled_indices)[top_idxs].tolist()
         label_manager.reveal_labels(reveal)
 
-class UncertaintyAccuracyOracle(SelectionFunction):
+class ConfidentlyIncorrect(SelectionFunction):
     """oracle method: label the most confident incorrect predictions"""
     def __init__(self, uncertainty_model, config):
         self.uncertainty_model = uncertainty_model
