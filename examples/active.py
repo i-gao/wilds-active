@@ -8,11 +8,12 @@ class LabelManager:
     Wraps a WILDS subset (e.g. ood test) with the ability to reveal / hide 
     labels and index these examples separately.
     """
-    def __init__(self, subset: WILDSSubset):
+    def __init__(self, subset: WILDSSubset, verbose=True):
         self.dataset = subset.dataset
         self.transform = subset.transform
         self._idx = set(subset.indices)
         self._idx_labels_revealed = set()
+        self.verbose = verbose
 
     def get_unlabeled_subset(self):
         return WILDSSubset(self.dataset, self.unlabeled_indices, self.transform)
@@ -28,7 +29,24 @@ class LabelManager:
         if len(set(idx).intersection(self._idx_labels_revealed)): 
             raise ValueError('Some indices have already been selected.')
         self._idx_labels_revealed.update(idx)
-        print(f"Total Labels Revealed: {len(self._idx_labels_revealed)}")
+        if self.verbose: print(f"Total Labels Revealed: {len(self._idx_labels_revealed)}")
+
+    def hide_labels(self, idx: [int]):
+        """Unremembers revealed example labels, undoing reveal_labels()"""
+        if not (set(idx).issubset(self._idx)):
+            raise ValueError('Some indices are invalid.')
+        if not (set(idx).issubset(self._idx_labels_revealed)):
+            raise ValueError('Some indices were never revealed.')
+        self._idx_labels_revealed = self._idx_labels_revealed - set(idx)
+        if self.verbose: print(f"Total Labels Revealed: {len(self._idx_labels_revealed)}")
+
+    @property
+    def num_labeled(self):
+        return len(self._idx_labels_revealed)
+    
+    @property
+    def num_unlabeled(self):
+        return len(self._idx - self._idx_labels_revealed)
 
     @property
     def labeled_indices(self):

@@ -3,6 +3,10 @@ from wilds.common.data_loaders import get_train_loader, get_eval_loader
 import numpy as np
 import torch
 import torch.nn.functional as F
+import copy
+from utils import configure_split_dict
+from train import run_epoch
+from tqdm import tqdm
 
 def initialize_selection_function(config, orig_algorithm, few_shot_algorithm, grouper=None):
     # initialize selection function to choose target examples to label
@@ -20,6 +24,8 @@ def initialize_selection_function(config, orig_algorithm, few_shot_algorithm, gr
         selection_fn = UncertaintySampling(orig_algorithm, config)
     elif config.selection_function=='confidently_incorrect':
         selection_fn = ConfidentlyIncorrect(few_shot_algorithm, config)
+    elif config.selection_function=='individual_oracle':
+        selection_fn = IndividualOracle(few_shot_algorithm, grouper, config)
     else:
         raise ValueError(f'Selection Function {config.selection_function} not recognized.')
     return selection_fn
@@ -161,5 +167,73 @@ class ConfidentlyIncorrect(SelectionFunction):
 
         # Choose K most certain and incorrect to reval labels
         _, top_idxs = torch.topk(certainties * ~correct, K)
+        reveal = torch.as_tensor(label_manager.unlabeled_indices)[top_idxs].tolist()
+        label_manager.reveal_labels(reveal)
+
+class IndividualOracle(SelectionFunction):
+    """oracle method: try a gradient step on every individual point & label those that best improve accuracy"""
+    def __init__(self, uncertainty_model, grouper, config):
+        self.uncertainty_model = uncertainty_model
+        self.grouper = grouper
+        super().__init__(
+            is_trainable=False,
+            config=config
+        )
+
+    def _get_delta_single_label(self, ind, label_manager):
+        """Try an individual point and return change in val metric after one epoch"""
+        label_manager.reveal_labels([ind])
+
+        labeled_dict = configure_split_dict(
+            data=label_manager.get_labeled_subset(),
+            split="labeled_test",
+            split_name="labeled_test",
+            train=True,
+            verbose=False,
+            grouper=self.grouper,
+            config=self.config)
+        unlabeled_dict = configure_split_dict(
+            data=label_manager.get_unlabeled_subset(),
+            split="unlabeled_test",
+            split_name="unlabeled_test",
+            train=False,
+            grouper=None,
+            verbose=False,
+            config=self.config)
+
+        temp_model = copy.deepcopy(self.uncertainty_model)
+        run_epoch( # train
+            temp_model,
+            labeled_dict,
+            None,
+            0,
+            self.config,
+            train=True)
+        res, _ = run_epoch( # eval
+            temp_model,
+            unlabeled_dict,
+            None,
+            0,
+            self.config,
+            train=False)
+
+        label_manager.hide_labels([ind])
+        return res[self.config.val_metric]
+
+    def select(self, label_manager, K):
+        self.uncertainty_model.eval()
+        unlabeled_indices = label_manager.unlabeled_indices
+
+        label_manager.verbose = False
+        delta = torch.zeros(len(unlabeled_indices), 1)
+        for i, dataset_index in enumerate(tqdm(unlabeled_indices)):
+            delta[i] = self._get_delta_single_label(dataset_index, label_manager)
+        label_manager.verbose = True
+
+        # Choose K improvement in val metric to reval labels
+        if self.config.val_metric_decreasing: delta *= -1
+        delta = delta.squeeze()
+
+        _, top_idxs = torch.topk(delta, K)
         reveal = torch.as_tensor(label_manager.unlabeled_indices)[top_idxs].tolist()
         label_manager.reveal_labels(reveal)

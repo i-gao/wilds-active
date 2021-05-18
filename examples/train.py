@@ -6,7 +6,7 @@ import torch.autograd.profiler as profiler
 from configs.supported import process_outputs_functions
 
 def run_epoch(algorithm, dataset, general_logger, epoch, config, train):
-    if dataset['verbose']:
+    if general_logger and dataset['verbose']:
         general_logger.write(f"\n{dataset['name']}:\n")
 
     if train:
@@ -43,7 +43,7 @@ def run_epoch(algorithm, dataset, general_logger, epoch, config, train):
         epoch_y_pred.append(y_pred)
         epoch_metadata.append(batch_results['metadata'].clone().detach())
 
-        if train and (batch_idx+1) % config.log_every==0:
+        if general_logger and train and (batch_idx+1) % config.log_every==0:
             log_results(algorithm, dataset, general_logger, epoch, batch_idx)
 
         batch_idx += 1
@@ -63,11 +63,11 @@ def run_epoch(algorithm, dataset, general_logger, epoch, config, train):
             log_access=(not train))
 
     # log after updating the scheduler in case it needs to access the internal logs
-    log_results(algorithm, dataset, general_logger, epoch, batch_idx)
+    if general_logger: log_results(algorithm, dataset, general_logger, epoch, batch_idx)
 
     results['epoch'] = epoch
     dataset['eval_logger'].log(results)
-    if dataset['verbose']:
+    if general_logger and dataset['verbose']:
         general_logger.write('Epoch eval:\n')
         general_logger.write(results_str)
 
@@ -108,7 +108,7 @@ def train(algorithm, datasets, general_logger, config, epoch_offset, best_val_me
             additional_splits = [split for split in datasets.keys() if split not in ['train','val']]
         else:
             additional_splits = config.eval_splits
-        if epoch % config.eval_additional_every == 0 or epoch == config.n_epochs - 1:
+        if (epoch+1) % config.eval_additional_every == 0 or epoch+1 == config.n_epochs :
             for split in additional_splits:
                 _, y_pred = run_epoch(algorithm, datasets[split], general_logger, epoch, config, train=False)
                 save_pred_if_needed(y_pred, datasets[split], epoch, rnd, config, is_best)
