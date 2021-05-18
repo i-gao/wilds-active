@@ -26,6 +26,8 @@ def initialize_selection_function(config, orig_algorithm, few_shot_algorithm, gr
         selection_fn = ConfidentlyIncorrect(few_shot_algorithm, config)
     elif config.selection_function=='individual_oracle':
         selection_fn = IndividualOracle(few_shot_algorithm, grouper, config)
+    elif config.selection_function=='approximate_individual_oracle':
+        selection_fn = ApproximateIndividualOracle(few_shot_algorithm, grouper, config)
     else:
         raise ValueError(f'Selection Function {config.selection_function} not recognized.')
     return selection_fn
@@ -236,4 +238,34 @@ class IndividualOracle(SelectionFunction):
 
         _, top_idxs = torch.topk(delta, K)
         reveal = torch.as_tensor(label_manager.unlabeled_indices)[top_idxs].tolist()
+        label_manager.reveal_labels(reveal)
+
+class ApproximateIndividualOracle(IndividualOracle):
+    """oracle method: try a gradient step on G randomly sampled individual points & label those that best improve accuracy"""
+    def __init__(self, uncertainty_model, grouper, config, G=100):
+        self.G = G
+        super().__init__(
+            uncertainty_model=uncertainty_model,
+            grouper=grouper,
+            config=config
+        )
+    
+    def select(self, label_manager, K):
+        assert self.G > K
+        self.uncertainty_model.eval()
+        unlabeled_indices = label_manager.unlabeled_indices
+        sampled_unlabeled_indices = np.random.choice(unlabeled_indices, size=min(len(unlabeled_indices), self.G), replace=False)
+
+        label_manager.verbose = False
+        delta = torch.zeros(len(sampled_unlabeled_indices), 1)
+        for i, dataset_index in enumerate(tqdm(sampled_unlabeled_indices)):
+            delta[i] = self._get_delta_single_label(dataset_index, label_manager)
+        label_manager.verbose = True
+
+        # Choose K improvement in val metric to reval labels
+        if self.config.val_metric_decreasing: delta *= -1
+        delta = delta.squeeze()
+
+        _, top_idxs = torch.topk(delta, K)
+        reveal = torch.as_tensor(sampled_unlabeled_indices)[top_idxs].tolist()
         label_manager.reveal_labels(reveal)
