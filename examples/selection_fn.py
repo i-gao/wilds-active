@@ -247,7 +247,7 @@ class IndividualOracle(Oracle):
         reveal = torch.as_tensor(label_manager.unlabeled_indices)[top_idxs].tolist()
         label_manager.reveal_labels(reveal)
 
-class ApproximateIndividualOracle(IndividualOracle):
+class ApproximateIndividualOracle(Oracle):
     """oracle method: try a gradient step on G randomly sampled individual points & label those that best improve accuracy"""
     def __init__(self, uncertainty_model, grouper, config, G=100):
         self.G = G
@@ -295,6 +295,8 @@ class ApproximateGroupOracle(Oracle):
         label_manager.verbose = True
 
         # Choose K improvement in val metric to reval labels
+        import pdb
+        pdb.set_trace()
         if self.config.val_metric_decreasing: delta *= -1
         _, top_idx = torch.argmax(delta)
         reveal = sampled_unlabeled_indices[top_idx].tolist()
