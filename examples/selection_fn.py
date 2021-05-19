@@ -249,8 +249,8 @@ class IndividualOracle(Oracle):
 
 class ApproximateIndividualOracle(Oracle):
     """oracle method: try a gradient step on G randomly sampled individual points & label those that best improve accuracy"""
-    def __init__(self, uncertainty_model, grouper, config, G=100):
-        self.G = G
+    def __init__(self, uncertainty_model, grouper, config):
+        self.G = config.selection_function_kwargs.get('n_simulations', 100)
         super().__init__(
             uncertainty_model=uncertainty_model,
             grouper=grouper,
@@ -276,8 +276,8 @@ class ApproximateIndividualOracle(Oracle):
 
 class ApproximateGroupOracle(Oracle):
     """oracle method: try a gradient step on G randomly sampled groups of K & label group that best improves accuracy"""
-    def __init__(self, uncertainty_model, grouper, config, G=100):
-        self.G = G
+    def __init__(self, uncertainty_model, grouper, config):
+        self.G = config.selection_function_kwargs.get('n_simulations', 100)
         super().__init__(
             uncertainty_model=uncertainty_model,
             grouper=grouper,
@@ -295,9 +295,7 @@ class ApproximateGroupOracle(Oracle):
         label_manager.verbose = True
 
         # Choose K improvement in val metric to reval labels
-        import pdb
-        pdb.set_trace()
         if self.config.val_metric_decreasing: delta *= -1
-        _, top_idx = torch.argmax(delta)
+        top_idx = torch.argmax(delta)
         reveal = sampled_unlabeled_indices[top_idx].tolist()
         label_manager.reveal_labels(reveal)
