@@ -1,20 +1,23 @@
 from wilds.common.data_loaders import get_train_loader, get_eval_loader
 
 import numpy as np
+import pandas as pd
 import torch
 import torch.nn.functional as F
 import copy
 from utils import configure_split_dict
 from train import run_epoch
 from tqdm import tqdm
+import os
+from shutil import copyfile
 
 def initialize_selection_function(config, orig_algorithm, few_shot_algorithm, grouper=None):
     # initialize selection function to choose target examples to label
     if config.selection_function=='random':
-        selection_fn = RandomSampling()
+        selection_fn = RandomSampling(config)
     elif config.selection_function=='stratified':
         assert grouper is not None
-        selection_fn = StratifiedSampling(grouper)
+        selection_fn = StratifiedSampling(grouper, config)
     elif config.selection_function=='uncertainty':
         if config.few_shot_kwargs.get('reset_classifier'): 
             import warnings
@@ -32,6 +35,10 @@ def initialize_selection_function(config, orig_algorithm, few_shot_algorithm, gr
         selection_fn = ApproximateGroupOracle(few_shot_algorithm, grouper, config)
     else:
         raise ValueError(f'Selection Function {config.selection_function} not recognized.')
+
+    if config.selection_function_kwargs.get('load_selection_path'):
+        selection_fn.load_selections(config.selection_function_kwargs['load_selection_path'])
+
     return selection_fn
 
 class SelectionFunction():
@@ -42,10 +49,17 @@ class SelectionFunction():
     def __init__(self, is_trainable=False, config=None):
         """
         Args:
-            - uncertainty_model: Algorithm
+            - is_trainable: selection_fn depends on an uncertainty_model that is separately trained
         """
         self.is_trainable = is_trainable
         self.config = config
+        self._prior_selections = [] # loaded selections from file
+        self.log_dir = self.config.log_dir
+        self.mode = 'w'
+
+        # for safety, copy previous selections.csv -> selections_old.csv
+        if os.path.exists(f"{self.log_dir}/selections.csv"): 
+            copyfile(f"{self.log_dir}/selections.csv", f"{self.log_dir}/selections_old.csv")
 
     # def update(self):
     #     """
@@ -56,18 +70,61 @@ class SelectionFunction():
     #     assert(self.is_trainable and self.uncertainty_model is not None, "This selection function does not use a trainable uncertainty model.")
     #     return self.uncertainty_model.update(batch)
 
+    def select_and_reveal(self, label_manager, K):
+        """
+        Labels K points by passing label_manager the indexes of examples to reveal
+        Wrapper for the select() function implemented by individual subclasse
+        """
+        reveal = []
+        if len(self._prior_selections):
+             reveal = self._prior_selections[:K]
+             del self._prior_selections[:K]
+
+        remaining_K = K - len(reveal)
+        if remaining_K:
+             reveal = reveal + self.select(label_manager, remaining_K)
+
+        label_manager.reveal_labels(reveal)
+        self.save_selections(reveal)
+
     def select(self, label_manager, K):
         """
         Labels K points by passing label_manager the indexes of examples to reveal
+        Abstract fn implemented in each child class
         Args:
             - label_manager (LabelManager object): see active.py; keeps track of which test points have revealed labels
         """
         raise NotImplementedError
 
+    def load_selections(self, csvpath):
+        """
+        Loads indices to select in the order of some csv
+        """
+        try:
+            df = pd.read_csv(csvpath, index_col=None, header=None)
+        except:
+            print(f"Couldn't find this file of previous selections: {csvpath}.")
+            return 
+        
+        assert len(df.columns) == 1
+        self._prior_selections = df[0].tolist()
+        print(f"Loaded {len(self._prior_selections)} previous selections")
+
+    def save_selections(self, indices):
+        """
+        Saves indices of selected points
+        """
+        csvpath = f"{self.log_dir}/selections.csv"
+        df = pd.DataFrame(indices)
+        df.to_csv(csvpath, mode=self.mode, index=False, header=False)
+        # now that we've written, append future rounds
+        self.mode = 'a'
+
 class RandomSampling(SelectionFunction):
-    def __init__(self):
+    def __init__(self, config):
         super().__init__(
-            is_trainable=False
+            is_trainable=False,
+            config=config
         )
     
     def select(self, label_manager, K):
@@ -75,14 +132,14 @@ class RandomSampling(SelectionFunction):
             label_manager.unlabeled_indices,
             replace=False, # assuming this is large enough
             size=K
-        )
-        label_manager.reveal_labels(reveal)
-
+        ).tolist()
+        return reveal
 class StratifiedSampling(SelectionFunction):
-    def __init__(self, grouper):
+    def __init__(self, grouper, config):
         self.grouper = grouper
         super().__init__(
-            is_trainable=False
+            is_trainable=False,
+            config=config
         )
     
     def select(self, label_manager, K):
@@ -102,8 +159,7 @@ class StratifiedSampling(SelectionFunction):
                 replace=sum(group_choices == g) <= sum(groups == g))
             for g in range(len(group_counts))]
         reveal = np.concatenate(reveal).tolist()       
-            
-        label_manager.reveal_labels(reveal)
+        return reveal
 
 class UncertaintySampling(SelectionFunction):
     def __init__(self, uncertainty_model, config):
@@ -135,7 +191,7 @@ class UncertaintySampling(SelectionFunction):
         # Choose K most uncertain to reval labels
         _, top_idxs = torch.topk(-certainties, K)
         reveal = torch.as_tensor(label_manager.unlabeled_indices)[top_idxs].tolist()
-        label_manager.reveal_labels(reveal)
+        return reveal
 
 class ConfidentlyIncorrect(SelectionFunction):
     """oracle method: label the most confident incorrect predictions"""
@@ -172,7 +228,7 @@ class ConfidentlyIncorrect(SelectionFunction):
         # Choose K most certain and incorrect to reval labels
         _, top_idxs = torch.topk(certainties * ~correct, K)
         reveal = torch.as_tensor(label_manager.unlabeled_indices)[top_idxs].tolist()
-        label_manager.reveal_labels(reveal)
+        return reveal
 
 class Oracle(SelectionFunction):
     """oracle method: try a gradient step on some points & label those that best improve accuracy"""
@@ -245,9 +301,9 @@ class IndividualOracle(Oracle):
         if self.config.val_metric_decreasing: delta *= -1
         _, top_idxs = torch.topk(delta, K)
         reveal = torch.as_tensor(label_manager.unlabeled_indices)[top_idxs].tolist()
-        label_manager.reveal_labels(reveal)
+        return reveal
 
-class ApproximateIndividualOracle(IndividualOracle):
+class ApproximateIndividualOracle(Oracle):
     """oracle method: try a gradient step on G randomly sampled individual points & label those that best improve accuracy"""
     def __init__(self, uncertainty_model, grouper, config):
         self.G = config.selection_function_kwargs.get('n_simulations', 100)
@@ -272,7 +328,7 @@ class ApproximateIndividualOracle(IndividualOracle):
         if self.config.val_metric_decreasing: delta *= -1
         _, top_idxs = torch.topk(delta, K)
         reveal = torch.as_tensor(sampled_unlabeled_indices)[top_idxs].tolist()
-        label_manager.reveal_labels(reveal)
+        return reveal
 
 class ApproximateGroupOracle(Oracle):
     """oracle method: try a gradient step on G randomly sampled groups of K & label group that best improves accuracy"""
@@ -298,4 +354,4 @@ class ApproximateGroupOracle(Oracle):
         if self.config.val_metric_decreasing: delta *= -1
         top_idx = torch.argmax(delta)
         reveal = sampled_unlabeled_indices[top_idx].tolist()
-        label_manager.reveal_labels(reveal)
+        return reveal
