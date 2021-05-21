@@ -1,5 +1,6 @@
 from wilds.datasets.wilds_dataset import WILDSSubset
 from torch.utils.data import Subset
+import numpy as np
 from utils import configure_split_dict, configure_loaders
 from train import train
 
@@ -7,8 +8,11 @@ class LabelManager:
     """
     Wraps a WILDS subset (e.g. ood test) with the ability to reveal / hide 
     labels and index these examples separately.
+    Args:
+        - subset: subset to hide/reveal labels for
+        - train: 
     """
-    def __init__(self, subset: WILDSSubset, verbose=True):
+    def __init__(self, subset: WILDSSubset, train=None, verbose=True):
         self.dataset = subset.dataset
         self.transform = subset.transform
         self._idx = set(subset.indices)
@@ -56,14 +60,16 @@ class LabelManager:
     def unlabeled_indices(self):
         return list(self._idx - self._idx_labels_revealed)
 
-def run_active_learning(selection_fn, few_shot_algorithm, datasets, general_logger, grouper, config):
+def run_active_learning(selection_fn, few_shot_algorithm, datasets, general_logger, grouper, config, full_dataset=None):
     label_manager = datasets['test']['label_manager']
+    joint_training = config.few_shot_kwargs.get('train_joint_source_target', False)
 
     # Add labeled test / unlabeled test splits.
-    datasets['labeled_test'] = configure_split_dict(
+    labeled_split_name = "labeled_test_joint" if joint_training else "labeled_test"
+    datasets[labeled_split_name] = configure_split_dict(
         data=None,
-        split="labeled_test",
-        split_name="labeled_test",
+        split=labeled_split_name,
+        split_name=labeled_split_name,
         train=True,
         verbose=True,
         grouper=grouper,
@@ -87,9 +93,20 @@ def run_active_learning(selection_fn, few_shot_algorithm, datasets, general_logg
         selection_fn.select_and_reveal(label_manager=label_manager, K=config.n_labels_round)
         
         ## Refresh dataloaders
+        if joint_training:
+            # Combine two WildsSubsets
+            assert full_dataset is not None
+            labeled_dataset = WILDSSubset(
+                full_dataset,
+                np.concatenate((label_manager.labeled_indices, datasets['train']['dataset'].indices)),
+                label_manager.transform
+            )
+        else:
+            labeled_dataset = label_manager.get_labeled_subset()
+
         configure_loaders(
-            split_dict=datasets['labeled_test'],
-            data=label_manager.get_labeled_subset(),
+            split_dict=datasets[labeled_split_name],
+            data=labeled_dataset,
             train=True,
             grouper=grouper,
             config=config)
@@ -104,7 +121,7 @@ def run_active_learning(selection_fn, few_shot_algorithm, datasets, general_logg
         train(
             algorithm=few_shot_algorithm,
             datasets=datasets,
-            train_split="labeled_test",
+            train_split=labeled_split_name,
             val_split=None,
             general_logger=general_logger,
             config=config,
