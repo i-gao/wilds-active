@@ -57,9 +57,9 @@ def main():
     # Active Learning
     parser.add_argument('--active_learning', type=parse_bool, const=True, nargs='?')
     parser.add_argument('--selection_function', choices=supported.selection_functions)
-    parser.add_argument('--n_labels_round', type=int, help="number of labels to actively learn each round")
-    parser.add_argument('--n_rounds', type=int, default=1, help="number of times to repeat the selection-train cycle")
     parser.add_argument('--selection_function_kwargs', nargs='*', action=ParseKwargs, default={}, help="keyword arguments for selection fn passed as key1=value1 key2=value2")
+    parser.add_argument('--n_rounds', type=int, default=1, help="number of times to repeat the selection-train cycle")
+    parser.add_argument('--n_labels_round', type=int, help="number of labels to actively learn each round")
     parser.add_argument('--few_shot_algorithm', choices=supported.few_shot_algorithms)
     parser.add_argument('--few_shot_kwargs', nargs='*', action=ParseKwargs, default={},
         help='keyword arguments for few shot algorithm initialization passed as key1=value1 key2=value2')

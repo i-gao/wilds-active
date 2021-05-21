@@ -84,7 +84,7 @@ def run_active_learning(selection_fn, few_shot_algorithm, datasets, general_logg
         ## Train selection function
         # selection_fn.update()
         ## Get a few labels
-        selection_fn.select(label_manager=label_manager, K=config.n_labels_round)
+        selection_fn.select_and_reveal(label_manager=label_manager, K=config.n_labels_round)
         
         ## Refresh dataloaders
         configure_loaders(
