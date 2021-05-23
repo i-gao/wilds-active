@@ -1,7 +1,7 @@
 from wilds.datasets.wilds_dataset import WILDSSubset
 from torch.utils.data import Subset
 import numpy as np
-from utils import configure_split_dict, configure_loaders
+from utils import configure_split_dict, configure_loaders, get_indices
 from train import train
 
 class LabelManager:
@@ -98,9 +98,17 @@ def run_active_learning(selection_fn, few_shot_algorithm, datasets, general_logg
             assert full_dataset is not None
             labeled_dataset = WILDSSubset(
                 full_dataset,
-                np.concatenate((label_manager.labeled_indices, datasets['train']['dataset'].indices)),
+                np.concatenate((label_manager.labeled_indices, datasets['train']['dataset'].indices)), # test points at front
                 label_manager.transform
             )
+            if config.few_shot_kwargs.get('single_test_group', False):
+                # rig all test metadata to have the same group as the first test point
+                test_metadata = labeled_dataset.metadata_array[0]
+                labeled_dataset.dataset.metadata_array[label_manager.labeled_indices] = test_metadata # VERY hacky, reaches into subset's dataset's metadata array
+            if config.few_shot_kwargs.get('single_train_group', False):
+                # rig all train metadata to have the same group as the first train point
+                train_metadata = labeled_dataset.metadata_array[-1]
+                labeled_dataset.dataset.metadata_array[datasets['train']['dataset'].indices] = train_metadata # VERY hacky, reaches into subset's dataset's metadata array                
         else:
             labeled_dataset = label_manager.get_labeled_subset()
 
@@ -128,3 +136,4 @@ def run_active_learning(selection_fn, few_shot_algorithm, datasets, general_logg
             rnd=rnd,
             epoch_offset=0,
             best_val_metric=None)
+
