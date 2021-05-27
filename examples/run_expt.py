@@ -85,6 +85,11 @@ def main():
     parser.add_argument('--coral_penalty_weight', type=float)
     parser.add_argument('--irm_lambda', type=float)
     parser.add_argument('--irm_penalty_anneal_iters', type=int)
+    parser.add_argument('--maml_k', type=int)
+    parser.add_argument('--maml_meta_batch_size', type=int)
+    parser.add_argument('--maml_adapt_lr', type=float)
+    parser.add_argument('--maml_n_adapt_steps', type=int)
+    parser.add_argument('--maml_first_order', type=parse_bool, const=True, nargs='?')
     parser.add_argument('--algo_log_metric')
 
     # Model selection
@@ -228,7 +233,7 @@ def main():
         datasets=datasets,
         train_grouper=train_grouper)
 
-    model_prefix = get_model_prefix(datasets['train'], config, load=True)
+    model_prefix = get_model_prefix(datasets['train'], config, load=(config.resume or config.active_learning))
     if not config.eval_only:
         ## Load saved results if resuming
         ## If doing active learning, expects to load a model trained on source
