@@ -274,7 +274,8 @@ def main():
                 datasets=datasets,
                 general_logger=logger,
                 grouper=train_grouper,
-                config=config)
+                config=config,
+                full_dataset=full_dataset)
         else: 
             train(
                 algorithm=algorithm,
