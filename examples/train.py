@@ -4,7 +4,60 @@ import torch
 from utils import save_model, save_pred, get_pred_prefix, get_model_prefix
 import torch.autograd.profiler as profiler
 from configs.supported import process_outputs_functions
+import numpy as np
 
+from wilds.common.data_loaders import get_train_loader, get_eval_loader
+from wilds.datasets.wilds_dataset import WILDSSubset
+
+def run_maml_epoch(algorithm, dataset, general_logger, epoch, config, train=False, labeled_set=None):
+    if general_logger and dataset['verbose']:
+        general_logger.write(f"\n{dataset['name']}:\n")
+
+    # meta-training on tasks
+    if train: 
+        for _ in range(config.maml_meta_batch_size):
+            task, adaptation_batch, eval_loader = sample_maml_task(
+                config.maml_k,
+                algorithm.grouper,
+                dataset['dataset'],
+                config.batch_size,
+                config.loader_kwargs,
+                labeled_set=labeled_set
+            )
+            general_logger.write(f'Sampled task {task}\n')
+            algorithm.adapt_task(adaptation_batch, eval_loader)
+        algorithm.meta_update(config.maml_meta_batch_size)
+    
+    # finetune and then evaluate
+    adapt_data = labeled_set['loader'] if labeled_set else dataset['loader']
+    epoch_results = algorithm.evaluate(adapt_data, dataset['loader']) 
+    
+    epoch_y_pred = epoch_results['y_pred'].clone().detach()
+    if config.process_outputs_function is not None:
+        epoch_y_pred = process_outputs_functions[config.process_outputs_function](epoch_y_pred)
+    
+    results, results_str = dataset['dataset'].eval(
+        epoch_y_pred,
+        epoch_results['y_true'],
+        epoch_results['metadata']
+    )
+
+    if config.scheduler_metric_split==dataset['split']:
+        algorithm.step_schedulers(
+            is_epoch=True,
+            metrics=results,
+            log_access=False
+        )
+
+    # log after updating the scheduler in case it needs to access the internal logs
+    if general_logger: log_results(algorithm, dataset, general_logger, epoch, 0)
+    results['epoch'] = epoch
+    dataset['eval_logger'].log(results)
+    if general_logger and dataset['verbose']:
+        general_logger.write('Epoch eval:\n')
+        general_logger.write(results_str)
+    return results, epoch_y_pred
+    
 def run_epoch(algorithm, dataset, general_logger, epoch, config, train):
     if general_logger and dataset['verbose']:
         general_logger.write(f"\n{dataset['name']}:\n")
@@ -78,15 +131,17 @@ def train(algorithm, datasets, general_logger, config, epoch_offset, best_val_me
     for epoch in range(epoch_offset, config.n_epochs):
         general_logger.write('\nEpoch [%d]:\n' % epoch)
 
+        epoch_fn = run_maml_epoch if config.algorithm == 'MAML' else run_epoch
+
         # First run training
-        run_epoch(algorithm, datasets[train_split], general_logger, epoch, config, train=True)
+        epoch_fn(algorithm, datasets[train_split], general_logger, epoch, config, train=True)
 
         # Then run val
         if val_split is None: 
             is_best = False # only save last
             best_val_metric = None
         else:
-            val_results, y_pred = run_epoch(algorithm, datasets[val_split], general_logger, epoch, config, train=False)
+            val_results, y_pred = epoch_fn(algorithm, datasets[val_split], general_logger, epoch, config, train=False)
             curr_val_metric = val_results[config.val_metric]
             general_logger.write(f'Validation {config.val_metric}: {curr_val_metric:.3f}\n')
 
@@ -110,7 +165,7 @@ def train(algorithm, datasets, general_logger, config, epoch_offset, best_val_me
             additional_splits = config.eval_splits
         if epoch % config.eval_additional_every == 0 or epoch+1 == config.n_epochs:
             for split in additional_splits:
-                _, y_pred = run_epoch(algorithm, datasets[split], general_logger, epoch, config, train=False)
+                _, y_pred = epoch_fn(algorithm, datasets[split], general_logger, epoch, config, train=False)
                 save_pred_if_needed(y_pred, datasets[split], epoch, rnd, config, is_best)
 
         general_logger.write('\n')
@@ -148,6 +203,41 @@ def evaluate(algorithm, datasets, epoch, general_logger, config):
         if split != 'train':
             save_pred_if_needed(y_pred, dataset, epoch, config, is_best=False, force_save=True)
 
+def sample_maml_task(K, grouper, support_set, batch_size, loader_kwargs, labeled_set=None):
+    """ 
+    Args: 
+        - K -- number of labeled shots for adaptation to generate per task
+        - grouper
+        - support_set -- the WILDSDataset to sample tasks (groups) from
+        - labeled_set -- (optional) restrict labeled values to come from this set
+    """
+    # Sample a task (a single group)
+    support_groups = grouper.metadata_to_group(support_set.metadata_array)
+    task = np.random.choice(support_groups.unique().numpy())
+
+    if labeled_set is None: labeled_set = support_set
+    labeled_groups = grouper.metadata_to_group(labeled_set.metadata_array)
+
+    adaptation_idx = np.random.choice(
+        np.arange(len(labeled_set))[labeled_groups == task],
+        K, 
+        replace=True
+    )
+    x, y, m = zip(*[labeled_set[i] for i in adaptation_idx])
+    adaptation_batch = (torch.stack(x), torch.stack(y), torch.stack(m))
+
+    task_support_set = WILDSSubset(
+        support_set.dataset,
+        list(set(support_set.indices[support_groups == task]) - set(adaptation_idx)),
+        support_set.transform
+    )
+    evaluation_loader = get_eval_loader(
+        loader='standard',
+        dataset=task_support_set,
+        batch_size=batch_size,
+        **loader_kwargs
+    )
+    return task, adaptation_batch, evaluation_loader
 
 def log_results(algorithm, dataset, general_logger, epoch, batch_idx):
     if algorithm.has_log:
