@@ -15,8 +15,9 @@ def run_maml_epoch(algorithm, dataset, general_logger, epoch, config, train=Fals
 
     # meta-training on tasks
     if train: 
+        algorithm.train()
         for _ in range(config.maml_meta_batch_size):
-            task, adaptation_batch, eval_loader = sample_maml_task(
+            task, adaptation_batch = sample_maml_task(
                 config.maml_k,
                 algorithm.grouper,
                 dataset['dataset'],
@@ -25,12 +26,21 @@ def run_maml_epoch(algorithm, dataset, general_logger, epoch, config, train=Fals
                 labeled_set=labeled_set
             )
             general_logger.write(f'Sampled task {task}\n')
-            algorithm.adapt_task(adaptation_batch, eval_loader)
-        algorithm.meta_update(config.maml_meta_batch_size)
+            algorithm.adapt_task(adaptation_batch, dataset['loader'])
     
     # finetune and then evaluate
     adapt_data = labeled_set['loader'] if labeled_set else dataset['loader']
-    epoch_results = algorithm.evaluate(adapt_data, dataset['loader']) 
+    # need to convert adapt_data -> tensor
+    _, adaptation_batch = sample_maml_task(
+        config.maml_k,
+        None,
+        dataset['dataset'],
+        config.batch_size,
+        config.loader_kwargs,
+        labeled_set=labeled_set
+    )
+
+    epoch_results = algorithm.evaluate(adaptation_batch, dataset['loader']) 
     
     epoch_y_pred = epoch_results['y_pred'].clone().detach()
     if config.process_outputs_function is not None:
@@ -203,7 +213,7 @@ def evaluate(algorithm, datasets, epoch, general_logger, config):
         if split != 'train':
             save_pred_if_needed(y_pred, dataset, epoch, config, is_best=False, force_save=True)
 
-def sample_maml_task(K, grouper, support_set, batch_size, loader_kwargs, labeled_set=None):
+def sample_maml_task(K, grouper, support_set, batch_size, loader_kwargs, labeled_set=None, enforce_disjoint=False):
     """ 
     Args: 
         - K -- number of labeled shots for adaptation to generate per task
@@ -211,33 +221,45 @@ def sample_maml_task(K, grouper, support_set, batch_size, loader_kwargs, labeled
         - support_set -- the WILDSDataset to sample tasks (groups) from
         - labeled_set -- (optional) restrict labeled values to come from this set
     """
-    # Sample a task (a single group)
-    support_groups = grouper.metadata_to_group(support_set.metadata_array)
-    task = np.random.choice(support_groups.unique().numpy())
-
     if labeled_set is None: labeled_set = support_set
-    labeled_groups = grouper.metadata_to_group(labeled_set.metadata_array)
+    if grouper is None:
+        # Sample k random points
+        adaptation_idx = np.random.choice(
+            np.arange(len(labeled_set)),
+            K, 
+            replace=True
+        )
+        task=None      
+    else:
+        # Sample a task (a single group)
+        support_groups = grouper.metadata_to_group(support_set.metadata_array)
+        task = np.random.choice(support_groups.unique().numpy()) 
+        labeled_groups = grouper.metadata_to_group(labeled_set.metadata_array)
 
-    adaptation_idx = np.random.choice(
-        np.arange(len(labeled_set))[labeled_groups == task],
-        K, 
-        replace=True
-    )
+        adaptation_idx = np.random.choice(
+            np.arange(len(labeled_set))[labeled_groups == task],
+            K, 
+            replace=True
+        )
+
     x, y, m = zip(*[labeled_set[i] for i in adaptation_idx])
     adaptation_batch = (torch.stack(x), torch.stack(y), torch.stack(m))
 
-    task_support_set = WILDSSubset(
-        support_set.dataset,
-        list(set(support_set.indices[support_groups == task]) - set(adaptation_idx)),
-        support_set.transform
-    )
-    evaluation_loader = get_eval_loader(
-        loader='standard',
-        dataset=task_support_set,
-        batch_size=batch_size,
-        **loader_kwargs
-    )
-    return task, adaptation_batch, evaluation_loader
+    if enforce_disjoint:
+        task_support_set = WILDSSubset(
+            support_set.dataset,
+            list(set(support_set.indices[support_groups == task]) - set(adaptation_idx)),
+            support_set.transform
+        )
+        evaluation_loader = get_eval_loader(
+            loader='standard',
+            dataset=task_support_set,
+            batch_size=batch_size,
+            **loader_kwargs
+        )
+        return task, adaptation_batch, evaluation_loader
+    else:
+        return task, adaptation_batch
 
 def log_results(algorithm, dataset, general_logger, epoch, batch_idx):
     if algorithm.has_log:
