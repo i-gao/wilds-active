@@ -26,7 +26,6 @@ class MAML(SingleModelAlgorithm):
             n_train_steps=n_train_steps,
         )
         self.meta_model = meta_model
-        self.model.to('cpu')
         del self.model
     
     def objective(self, results):
