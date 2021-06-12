@@ -39,6 +39,8 @@ def run_maml_epoch(algorithm, dataset, general_logger, epoch, config, train=Fals
         config.loader_kwargs,
         labeled_set=labeled_set
     )
+    _, adaptation_batch_groups = algorithm.grouper.metadata_to_group(adaptation_batch[2]).unique(return_counts=True)# TODO: remove
+    general_logger.write(f'Sampled for evaluation batch with groups {adaptation_batch_groups}\n') # TODO: remove
 
     epoch_results = algorithm.evaluate(adaptation_batch, dataset['loader']) 
     

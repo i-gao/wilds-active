@@ -26,6 +26,7 @@ class MAML(SingleModelAlgorithm):
             n_train_steps=n_train_steps,
         )
         self.meta_model = meta_model
+        self.model.to('cpu')
         del self.model
     
     def objective(self, results):
@@ -39,13 +40,14 @@ class MAML(SingleModelAlgorithm):
 
         self._train_task_model(adapt_batch) 
         results = self._eval_task_model(eval_loader, call_backward=True)
+        print(f">>> Evaluation: test_loss for this task is {self.objective(results).item()}") # TODO: remove
 
-        self.model.to('cpu')
         self.optimizer.step()
         self.step_schedulers(
             is_epoch=False,
             metrics=results,
             log_access=False)
+        self.model.to('cpu')
         del self.model
         torch.cuda.empty_cache()
         
@@ -55,6 +57,10 @@ class MAML(SingleModelAlgorithm):
         self._train_task_model(adapt_data)
         results = self._eval_task_model(eval_loader)
         results['objective'] = self.objective(results).item()
+
+        self.model.to('cpu')
+        del self.model
+        torch.cuda.empty_cache()
 
         self.update_log(results)
         return self.sanitize_dict(results)
@@ -66,6 +72,7 @@ class MAML(SingleModelAlgorithm):
             train_error = self.objective(results)
             self.model.adapt(train_error)
             train_error.detach() 
+            print(f">>> Adapt step {step}: train_loss is {train_error.item()} (This should be decreasing)") # TODO: remove
                 
     def _eval_task_model(self, task_eval_loader, call_backward=False):
         self.model.eval()
@@ -74,7 +81,6 @@ class MAML(SingleModelAlgorithm):
         epoch_g = [] 
         epoch_metadata = []
         epoch_y_pred = []
-        epoch_objective = 0
 
         with torch.set_grad_enabled(call_backward):
             for batch in task_eval_loader:
