@@ -28,6 +28,8 @@ def run_maml_epoch(algorithm, dataset, general_logger, epoch, config, train=Fals
             general_logger.write(f'Sampled task {task}\n')
             algorithm.adapt_task(adaptation_batch, dataset['loader'])
     
+    algorithm.eval()
+    
     # finetune and then evaluate
     adapt_data = labeled_set['loader'] if labeled_set else dataset['loader']
     # need to convert adapt_data -> tensor
