@@ -30,6 +30,12 @@ algorithm_defaults = {
         'train_loader': 'standard',
         'uniform_over_groups': False,
         'eval_loader': 'standard',
+        'maml_first_order': True
+    },
+    'ANIL': {
+        'train_loader': 'standard',
+        'uniform_over_groups': False,
+        'eval_loader': 'standard',
         'maml_first_order': False
     },
 }

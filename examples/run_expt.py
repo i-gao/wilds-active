@@ -85,11 +85,11 @@ def main():
     parser.add_argument('--coral_penalty_weight', type=float)
     parser.add_argument('--irm_lambda', type=float)
     parser.add_argument('--irm_penalty_anneal_iters', type=int)
-    parser.add_argument('--maml_k', type=int)
-    parser.add_argument('--maml_meta_batch_size', type=int)
-    parser.add_argument('--maml_adapt_lr', type=float)
-    parser.add_argument('--maml_n_adapt_steps', type=int)
-    parser.add_argument('--maml_first_order', type=parse_bool, const=True, nargs='?', default=True)
+    parser.add_argument('--metalearning_k', type=int)
+    parser.add_argument('--metalearning_meta_batch_size', type=int)
+    parser.add_argument('--metalearning_adapt_lr', type=float)
+    parser.add_argument('--metalearning_n_adapt_steps', type=int)
+    parser.add_argument('--maml_first_order', type=parse_bool, const=True, nargs='?')
     parser.add_argument('--algo_log_metric')
 
     # Model selection

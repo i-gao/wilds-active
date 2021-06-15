@@ -9,16 +9,16 @@ import numpy as np
 from wilds.common.data_loaders import get_train_loader, get_eval_loader
 from wilds.datasets.wilds_dataset import WILDSSubset
 
-def run_maml_epoch(algorithm, dataset, general_logger, epoch, config, train=False, labeled_set=None):
+def run_metalearning_epoch(algorithm, dataset, general_logger, epoch, config, train=False, labeled_set=None):
     if general_logger and dataset['verbose']:
         general_logger.write(f"\n{dataset['name']}:\n")
 
     # meta-training on tasks
     if train: 
         algorithm.train()
-        for _ in range(config.maml_meta_batch_size):
-            task, adaptation_batch = sample_maml_task(
-                config.maml_k,
+        for _ in range(config.metalearning_meta_batch_size):
+            task, adaptation_batch = sample_metalearning_task(
+                config.metalearning_k,
                 algorithm.grouper,
                 dataset['dataset'],
                 config.batch_size,
@@ -33,8 +33,8 @@ def run_maml_epoch(algorithm, dataset, general_logger, epoch, config, train=Fals
     # finetune and then evaluate
     adapt_data = labeled_set['loader'] if labeled_set else dataset['loader']
     # need to convert adapt_data -> tensor
-    _, adaptation_batch = sample_maml_task(
-        config.maml_k,
+    _, adaptation_batch = sample_metalearning_task(
+        config.metalearning_k,
         None,
         dataset['dataset'],
         config.batch_size,
@@ -145,7 +145,7 @@ def train(algorithm, datasets, general_logger, config, epoch_offset, best_val_me
     for epoch in range(epoch_offset, config.n_epochs):
         general_logger.write('\nEpoch [%d]:\n' % epoch)
 
-        epoch_fn = run_maml_epoch if config.algorithm == 'MAML' else run_epoch
+        epoch_fn = run_metalearning_epoch if config.algorithm in ['MAML', 'ANIL'] else run_epoch
 
         # First run training
         epoch_fn(algorithm, datasets[train_split], general_logger, epoch, config, train=True)
@@ -217,7 +217,7 @@ def evaluate(algorithm, datasets, epoch, general_logger, config):
         if split != 'train':
             save_pred_if_needed(y_pred, dataset, epoch, config, is_best=False, force_save=True)
 
-def sample_maml_task(K, grouper, support_set, batch_size, loader_kwargs, labeled_set=None, enforce_disjoint=False):
+def sample_metalearning_task(K, grouper, support_set, batch_size, loader_kwargs, labeled_set=None, enforce_disjoint=False):
     """ 
     Args: 
         - K -- number of labeled shots for adaptation to generate per task

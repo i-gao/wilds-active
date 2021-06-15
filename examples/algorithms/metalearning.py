@@ -3,20 +3,10 @@ from algorithms.single_model_algorithm import SingleModelAlgorithm
 from models.initializer import initialize_model
 import learn2learn as l2l
 
-class MAML(SingleModelAlgorithm):
-    def __init__(self, config, d_out, grouper, loss,
+class MetaLearning(SingleModelAlgorithm): 
+    def __init__(self, meta_model, config, grouper, loss,
             metric, n_train_steps):
-        model = initialize_model(config, d_out).to(config.device)
-        # self.meta_model is the main model that lasts
-        # self.model is the task model that is frequently overwritten
-        meta_model = l2l.algorithms.MAML(
-            model, 
-            lr=config.maml_adapt_lr, 
-            first_order=config.maml_first_order
-        ) 
-        self.adaptation_steps = config.maml_n_adapt_steps
-        
-        # initialize module
+        self.adaptation_steps = config.metalearning_n_adapt_steps
         super().__init__(
             config=config,
             model=meta_model, # so that optim has correct params
@@ -25,9 +15,11 @@ class MAML(SingleModelAlgorithm):
             metric=metric,
             n_train_steps=n_train_steps,
         )
+        # self.meta_model is the main model that lasts
+        # self.model is the task model that is deleted and overwritten (per call to adapt_task)
         self.meta_model = meta_model
-        del self.model
-    
+        del self.model # remove the self.model pointer (ref through self.meta_model instead)
+
     def objective(self, results):
         return self.loss.compute(results['y_pred'], results['y_true'], return_dict=False)
     
@@ -98,3 +90,47 @@ class MAML(SingleModelAlgorithm):
             'metadata': torch.cat(epoch_metadata),
             'y_pred': torch.cat(epoch_y_pred)
         }
+
+
+class MAML(MetaLearning):
+    def __init__(self, config, d_out, grouper, loss,
+            metric, n_train_steps):
+        model = initialize_model(config, d_out).to(config.device)
+        meta_model = l2l.algorithms.MAML(
+            model, 
+            lr=config.metalearning_adapt_lr, 
+            first_order=config.maml_first_order
+        ) 
+        # initialize module
+        super().__init__(
+            meta_model=meta_model,
+            config=config,
+            grouper=grouper,
+            loss=loss,
+            metric=metric,
+            n_train_steps=n_train_steps,
+        )
+
+class ANIL(MetaLearning):
+    def __init__(self, config, d_out, grouper, loss,
+            metric, n_train_steps):
+        model = initialize_model(config, d_out).to(config.device)
+        # turn off gradients for all modules except final module (assumed to be the classifier)
+        for p in model.parameters():
+            p.requires_grad = False
+        *_, classifier = model.modules()
+        for p in classifier.parameters():
+            p.requires_grad = True
+        meta_model = l2l.algorithms.MAML(
+            model, 
+            lr=config.metalearning_adapt_lr
+        ) 
+        # initialize module
+        super().__init__(
+            meta_model=meta_model,
+            config=config,
+            grouper=grouper,
+            loss=loss,
+            metric=metric,
+            n_train_steps=n_train_steps,
+        )
