@@ -30,12 +30,21 @@ algorithm_defaults = {
         'train_loader': 'standard',
         'uniform_over_groups': False,
         'eval_loader': 'standard',
-        'maml_first_order': True
+        'maml_first_order': True,
+        'metalearning_kwargs': {
+            'n_adapt_steps': 5,
+            'n_eval_examples': 16,
+            'n_groups_task': 1
+        }
     },
     'ANIL': {
         'train_loader': 'standard',
         'uniform_over_groups': False,
         'eval_loader': 'standard',
-        'maml_first_order': False
+        'metalearning_kwargs': {
+            'n_adapt_steps': 5,
+            'n_eval_examples': 16,
+            'n_groups_task': 1
+        }
     },
 }

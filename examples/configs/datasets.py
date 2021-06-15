@@ -55,8 +55,9 @@ dataset_defaults = {
         'batch_size': 32,
         'lr': 0.001,
         'metalearning_adapt_lr': 0.001, # same as outer lr
-        'metalearning_n_adapt_steps': 5, # n_epochs
-        'metalearning_meta_batch_size': 3, # num train groups
+        'metalearning_kwargs': {
+            'meta_batch_size': 3, # num train groups
+        },
         'weight_decay': 0.01,
         'n_epochs': 5,
         'n_groups_per_batch': 2,
@@ -129,8 +130,9 @@ dataset_defaults = {
         'batch_size': 64,
         'lr': 0.0001,
         'metalearning_adapt_lr': 0.0001, # same as outer lr
-        'metalearning_n_adapt_steps': 25, # 1/2 of n_epochs
-        'metalearning_meta_batch_size': 12, # num train groups
+        'metalearning_kwargs': {
+            'meta_batch_size': 12 # num train groups
+        },
         'weight_decay': 0.0,
         'n_epochs': 50,
         'n_groups_per_batch': 8,
@@ -151,8 +153,9 @@ dataset_defaults = {
         'model': 'resnet50',
         'lr': 3e-5,
         'metalearning_adapt_lr': 3e-5, # same as outer lr
-        'metalearning_n_adapt_steps': 12, # n_epochs
-        'metalearning_meta_batch_size': 243, # num train groups
+        'metalearning_kwargs': {
+            'meta_batch_size': 243 # num train groups
+        },
         'weight_decay': 0.0,
         'batch_size': 16,
         'n_epochs': 12,
