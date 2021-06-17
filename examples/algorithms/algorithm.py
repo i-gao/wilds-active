@@ -1,5 +1,7 @@
 import torch
 import torch.nn as nn
+import re
+from collections import OrderedDict
 
 class Algorithm(nn.Module):
     def __init__(self, device):
@@ -8,6 +10,27 @@ class Algorithm(nn.Module):
         self.out_device = 'cpu'
         self._has_log = False
         self.reset_log()
+
+    def load_state_dict(self, state_dict):
+        """
+        Some algorithms have self.meta_model while others just use self.model; make these compatible.
+        i.e.
+        - If this algorithm has self.meta_model but the state_dict only has state_dict.model, fill self.meta_model
+        weights with state_dict.model weights
+        - If this algorithm only has self.model but the state_dict only has state_dict.meta_model, fill self.model
+        weights with state_dict.meta_model weights
+        - Otherwise, load as normal
+        """
+        is_state_dict_meta = any([k.startswith('meta_model') for k in state_dict.keys()])
+        is_self_meta = hasattr(self, 'meta_model')
+        new_state_dict = OrderedDict()
+        if is_self_meta and not is_state_dict_meta:
+            for k in state_dict.keys():
+                new_state_dict[re.sub('model', 'meta_model.module', k)] = state_dict[k]
+        elif not is_self_meta and is_state_dict_meta:
+            for k in state_dict.keys():
+                new_state_dict[re.sub('meta_model.module', 'model', k)] = state_dict[k]
+        super().load_state_dict(new_state_dict)        
 
     def update(self, batch):
         """

@@ -138,9 +138,15 @@ def main():
     config.device = torch.device("cuda:" + str(config.device)) if torch.cuda.is_available() else torch.device("cpu")
 
     ## Initialize logs
-    if os.path.exists(config.log_dir) and config.resume:
+    if os.path.exists(config.log_dir) and config.load_dir is None and config.resume:
         config.resume=True
         config.mode='a'
+    elif os.path.exists(config.log_dir) and config.load_dir == config.log_dir and config.resume:
+        config.resume=True
+        config.mode='a'
+    elif config.load_dir != config.log_dir and config.resume:
+        config.resume=True
+        config.mode='w'
     elif os.path.exists(config.log_dir) and config.eval_only:
         config.resume=False
         config.mode='a'
