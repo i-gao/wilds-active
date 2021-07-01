@@ -29,6 +29,9 @@ def main():
     ''' set default hyperparams in default_hyperparams.py '''
     parser = argparse.ArgumentParser()
 
+    ### TEMPORARY ARGUMENTS ###
+    parser.add_argument('--overwrite_split_scheme', default=None, choices=['all'], help='Overwrite split scheme.')
+
     # Required arguments
     parser.add_argument('-d', '--dataset', choices=wilds.supported_datasets, required=True)
     parser.add_argument('--algorithm', required=True, choices=supported.algorithms)
@@ -189,33 +192,52 @@ def main():
         groupby_fields=config.groupby_fields)
 
     datasets = defaultdict(dict)
-    for split in full_dataset.split_dict.keys():
-        if split=='train':
-            transform = train_transform
-            verbose = True
-        elif split == 'val':
-            transform = eval_transform
-            verbose = True
-        else:
-            transform = eval_transform
-            verbose = False
 
-        data = full_dataset.get_subset(
-            split,
-            frac=config.frac,
-            transform=transform)
-        
-        datasets[split] = configure_split_dict(
-            data=data,
-            split=split,
-            split_name=full_dataset.split_names[split],
-            train=(split=='train'),
-            verbose=verbose,
-            grouper=train_grouper,
-            config=config)
- 
-        if 'test' in split and config.active_learning:
-            datasets[split]['label_manager'] = LabelManager(datasets[split]['dataset'])
+    if config.overwrite_split_scheme == "all":
+        '''
+        Overwrite the split scheme s.t. we only have one split: all data pooled together
+        '''
+        from wilds.datasets.wilds_dataset import WILDSSubset
+        import numpy as np
+        idx = np.arange(len(full_dataset))
+        data = WILDSSubset(full_dataset, idx, train_transform)
+        datasets['train'] = configure_split_dict(
+                data=data,
+                split='train',
+                split_name=full_dataset.split_names['train'],
+                train=True,
+                verbose=True,
+                grouper=train_grouper,
+                config=config)
+        assert len(full_dataset) == len(data)
+    else:
+        for split in full_dataset.split_dict.keys():
+            if split=='train':
+                transform = train_transform
+                verbose = True
+            elif split == 'val':
+                transform = eval_transform
+                verbose = True
+            else:
+                transform = eval_transform
+                verbose = False
+
+            data = full_dataset.get_subset(
+                split,
+                frac=config.frac,
+                transform=transform)
+            
+            datasets[split] = configure_split_dict(
+                data=data,
+                split=split,
+                split_name=full_dataset.split_names[split],
+                train=(split=='train'),
+                verbose=verbose,
+                grouper=train_grouper,
+                config=config)
+    
+            if 'test' in split and config.active_learning:
+                datasets[split]['label_manager'] = LabelManager(datasets[split]['dataset'])
 
     if config.use_wandb:
         initialize_wandb(config)
@@ -293,7 +315,8 @@ def main():
                 general_logger=logger,
                 config=config,
                 epoch_offset=epoch_offset,
-                best_val_metric=best_val_metric)
+                best_val_metric=best_val_metric,
+                val_split=None if len(datasets) == 1 else 'val')
     else:
         if config.eval_epoch is None:
             eval_model_path = model_prefix + 'epoch:best_model.pth'
