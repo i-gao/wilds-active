@@ -193,60 +193,61 @@ def main():
         groupby_fields=config.groupby_fields)
 
     datasets = defaultdict(dict)
+    for split in full_dataset.split_dict.keys():
 
-    if config.overwrite_split_scheme == "all":
-        '''
-        Overwrite the split scheme s.t. we only have one split: all data pooled together
-        '''
-        from wilds.datasets.wilds_dataset import WILDSSubset
-        import numpy as np
-        idx = np.arange(len(full_dataset))
-        data = WILDSSubset(full_dataset, idx, train_transform)
-        datasets['train'] = configure_split_dict(
-                data=data,
-                split='train',
-                split_name=full_dataset.split_names['train'],
-                train=True,
-                verbose=True,
-                grouper=train_grouper,
-                config=config)
-        assert len(full_dataset) == len(data)
-    elif config.overwrite_split_scheme == "identity":
-        '''
-        Overwrite the split scheme s.t. we only have one split: all train data with identity=1
-        '''
-        from wilds.datasets.wilds_dataset import WILDSSubset
-        import numpy as np
-        data = full_dataset.get_subset('train')
-        groups = train_grouper.metadata_to_group(data.metadata_array)
-        mask = ((groups == 1) | (groups == 3))
-        idx = data.indices[mask]
-        data = WILDSSubset(full_dataset, idx, train_transform)
-        datasets['train'] = configure_split_dict(
-                data=data,
-                split='train',
-                split_name=full_dataset.split_names['train'],
-                train=True,
-                verbose=True,
-                grouper=train_grouper,
-                config=config)
-    else:
-        for split in full_dataset.split_dict.keys():
-            if split=='train':
-                transform = train_transform
-                verbose = True
-            elif split == 'val':
-                transform = eval_transform
-                verbose = True
-            else:
-                transform = eval_transform
-                verbose = False
+        if config.overwrite_split_scheme == "all":
+            '''
+            Overwrite the split scheme s.t. we only have one split: all data pooled together
+            '''
+            from wilds.datasets.wilds_dataset import WILDSSubset
+            import numpy as np
+            idx = np.arange(len(full_dataset))
+            data = WILDSSubset(full_dataset, idx, train_transform)
+            datasets['train'] = configure_split_dict(
+                    data=data,
+                    split='train',
+                    split_name=full_dataset.split_names['train'],
+                    train=True,
+                    verbose=True,
+                    grouper=train_grouper,
+                    config=config)
+            assert len(full_dataset) == len(data)
+            break
 
-            data = full_dataset.get_subset(
-                split,
-                frac=config.frac,
-                transform=transform)
-            
+        if split=='train':
+            transform = train_transform
+            verbose = True
+        elif split == 'val':
+            transform = eval_transform
+            verbose = True
+        else:
+            transform = eval_transform
+            verbose = False
+
+        data = full_dataset.get_subset(
+            split,
+            frac=config.frac,
+            transform=transform)
+
+        if split == 'train' and config.overwrite_split_scheme == "identity":
+            '''
+            Overwrite the split scheme s.t. the train split only has data with identity=1
+            '''
+            from wilds.datasets.wilds_dataset import WILDSSubset
+            import numpy as np
+            groups = train_grouper.metadata_to_group(data.metadata_array)
+            mask = ((groups == 1) | (groups == 3))
+            idx = data.indices[mask]
+            data = WILDSSubset(full_dataset, idx, train_transform)
+            datasets['train'] = configure_split_dict(
+                    data=data,
+                    split='train',
+                    split_name=full_dataset.split_names['train'],
+                    train=True,
+                    verbose=True,
+                    grouper=train_grouper,
+                    config=config)
+        else: 
             datasets[split] = configure_split_dict(
                 data=data,
                 split=split,
@@ -255,9 +256,9 @@ def main():
                 verbose=verbose,
                 grouper=train_grouper,
                 config=config)
-    
-            if 'test' in split and config.active_learning:
-                datasets[split]['label_manager'] = LabelManager(datasets[split]['dataset'])
+
+        if 'test' in split and config.active_learning:
+            datasets[split]['label_manager'] = LabelManager(datasets[split]['dataset'])
 
     if config.use_wandb:
         initialize_wandb(config)
