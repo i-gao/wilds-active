@@ -210,6 +210,25 @@ def main():
                 grouper=train_grouper,
                 config=config)
         assert len(full_dataset) == len(data)
+    elif config.overwrite_split_scheme == "identity":
+        '''
+        Overwrite the split scheme s.t. we only have one split: all train data with identity=1
+        '''
+        from wilds.datasets.wilds_dataset import WILDSSubset
+        import numpy as np
+        data = full_dataset.get_subset('train', split)
+        groups = train_grouper.metadata_to_group(data.metadata_array)
+        mask = (groups == 1 | groups == 3)
+        idx = data.indices[mask]
+        data = WILDSSubset(full_dataset, idx, train_transform)
+        datasets['train'] = configure_split_dict(
+                data=data,
+                split='train',
+                split_name=full_dataset.split_names['train'],
+                train=True,
+                verbose=True,
+                grouper=train_grouper,
+                config=config)
     else:
         for split in full_dataset.split_dict.keys():
             if split=='train':
