@@ -14,7 +14,7 @@ from shutil import copyfile
 def initialize_selection_function(config, orig_algorithm, few_shot_algorithm, grouper=None):
     # initialize selection function to choose target examples to label
     if config.selection_function=='random':
-        selection_fn = RandomSampling(config)
+        selection_fn = RandomSampling(grouper, config)
     elif config.selection_function=='stratified':
         assert grouper is not None
         selection_fn = StratifiedSampling(grouper, config)
@@ -22,11 +22,11 @@ def initialize_selection_function(config, orig_algorithm, few_shot_algorithm, gr
         if config.few_shot_kwargs.get('reset_classifier'): 
             import warnings
             warnings.warn("Running uncertainty sampling using a randomly initialized logits layer.")
-        selection_fn = UncertaintySampling(few_shot_algorithm, config)
+        selection_fn = UncertaintySampling(few_shot_algorithm, grouper, config)
     elif config.selection_function=='uncertainty_fixed':
-        selection_fn = UncertaintySampling(orig_algorithm, config)
+        selection_fn = UncertaintySampling(orig_algorithm, grouper, config)
     elif config.selection_function=='confidently_incorrect':
-        selection_fn = ConfidentlyIncorrect(few_shot_algorithm, config)
+        selection_fn = ConfidentlyIncorrect(few_shot_algorithm, grouper, config)
     elif config.selection_function=='individual_oracle':
         selection_fn = IndividualOracle(few_shot_algorithm, grouper, config)
     elif config.selection_function=='approximate_individual_oracle':
@@ -46,11 +46,12 @@ class SelectionFunction():
     Abstract class for a function that selects K examples to reveal labels for.
     Works in conjunction with a LabelManager.
     """
-    def __init__(self, is_trainable=False, config=None):
+    def __init__(self, select_grouper, is_trainable=False, config=None):
         """
         Args:
             - is_trainable: selection_fn depends on an uncertainty_model that is separately trained
         """
+        self.select_grouper = select_grouper
         self.is_trainable = is_trainable
         self.config = config
         self._prior_selections = [] # loaded selections from file
@@ -72,17 +73,27 @@ class SelectionFunction():
 
     def select_and_reveal(self, label_manager, K):
         """
-        Labels K points by passing label_manager the indexes of examples to reveal
-        Wrapper for the select() function implemented by individual subclasse
+        Labels K examples by passing label_manager the indexes of examples to reveal
+        Wrapper for the select() function implemented by subclasses
         """
+        import pdb
+        pdb.set_trace()
+        groups = self.select_grouper.metadata_to_group(label_manager.unlabeled_metadata_array)
+        remaining = torch.zeros(groups.max() + 1)
+        remaining[groups.unique()] = K 
+        remaining = remaining.int().tolist()
         reveal = []
-        if len(self._prior_selections):
-             reveal = self._prior_selections[:K]
-             del self._prior_selections[:K]
+        for idx in self._prior_selections:
+            i = label_manager.unlabeled_indices.index(idx)
+            g = groups[i]
+            if remaining[g] > 0:
+                reveal.append(idx)
+                remaining[g] -= 1
+            if sum(remaining) == 0: break
+        self._prior_selections = [idx for idx in self._prior_selections if idx not in set(reveal)]
 
-        remaining_K = K - len(reveal)
-        if remaining_K:
-             reveal = reveal + self.select(label_manager, remaining_K)
+        if sum(remaining) > 0:
+            reveal = reveal + self.select(label_manager, remaining, groups)
 
         label_manager.reveal_labels(reveal)
         self.save_selections(reveal)
@@ -93,6 +104,7 @@ class SelectionFunction():
         Abstract fn implemented in each child class
         Args:
             - label_manager (LabelManager object): see active.py; keeps track of which test points have revealed labels
+            - K: tensor where index i represents the number of examples to select for group i
         """
         raise NotImplementedError
 
@@ -121,50 +133,59 @@ class SelectionFunction():
         self.mode = 'a'
 
 class RandomSampling(SelectionFunction):
-    def __init__(self, config):
+    def __init__(self, select_grouper, config):
         super().__init__(
+            select_grouper=select_grouper,
             is_trainable=False,
             config=config
         )
     
-    def select(self, label_manager, K):
-        reveal = np.random.choice(
-            label_manager.unlabeled_indices,
-            replace=False, # assuming this is large enough
-            size=K
-        ).tolist()
-        return reveal
-class StratifiedSampling(SelectionFunction):
-    def __init__(self, grouper, config):
-        self.grouper = grouper
-        super().__init__(
-            is_trainable=False,
-            config=config
-        )
-    
-    def select(self, label_manager, K):
-        groups, group_counts = self.grouper.metadata_to_group(
-            label_manager.get_unlabeled_subset().metadata_array,
-            return_counts=True)
-        group_counts = group_counts.numpy().astype('float64')
-        group_choices = np.random.choice(
-            np.arange(len(group_counts)),
-            K,
-            p=group_counts/sum(group_counts))
-        unlabeled_indices = np.array(label_manager.unlabeled_indices)
-        reveal = [
-            np.random.choice(
+    def select(self, label_manager, K, groups):
+        unlabeled_indices = torch.tensor(label_manager.unlabeled_indices)
+        reveal = []
+        for g, group_K in enumerate(K):
+            if group_K == 0: continue
+            reveal_g = np.random.choice(
                 unlabeled_indices[groups == g],
-                size=sum(group_choices == g),
-                replace=sum(group_choices == g) <= sum(groups == g))
-            for g in range(len(group_counts))]
-        reveal = np.concatenate(reveal).tolist()       
+                replace=False, # assuming this is large enough
+                size=min(group_K, sum(groups == g))
+            ).tolist()
+            reveal = reveal + reveal_g
         return reveal
 
+# class StratifiedSampling(SelectionFunction):
+#     def __init__(self, select_grouper, config):
+#         assert 
+#         super().__init__(
+#             select_grouper=select_grouper,
+#             is_trainable=False,
+#             config=config
+#         )
+    
+#     def select(self, label_manager, K):
+#         groups, group_counts = self.grouper.metadata_to_group(
+#             label_manager.get_unlabeled_subset().metadata_array,
+#             return_counts=True)
+#         group_counts = group_counts.numpy().astype('float64')
+#         group_choices = np.random.choice(
+#             np.arange(len(group_counts)),
+#             K,
+#             p=group_counts/sum(group_counts))
+#         unlabeled_indices = np.array(label_manager.unlabeled_indices)
+#         reveal = [
+#             np.random.choice(
+#                 unlabeled_indices[groups == g],
+#                 size=sum(group_choices == g),
+#                 replace=sum(group_choices == g) <= sum(groups == g))
+#             for g in range(len(group_counts))]
+#         reveal = np.concatenate(reveal).tolist()       
+#         return reveal
+
 class UncertaintySampling(SelectionFunction):
-    def __init__(self, uncertainty_model, config):
+    def __init__(self, uncertainty_model, grouper, config):
         self.uncertainty_model = uncertainty_model
         super().__init__(
+            grouper=grouper,
             is_trainable=False,
             config=config
         )
@@ -189,15 +210,21 @@ class UncertaintySampling(SelectionFunction):
         certainties = torch.cat(certainties)
 
         # Choose K most uncertain to reval labels
-        _, top_idxs = torch.topk(-certainties, K)
-        reveal = torch.as_tensor(label_manager.unlabeled_indices)[top_idxs].tolist()
+        reveal = []
+        unlabeled_indices = torch.tensor(label_manager.unlabeled_indices)
+        for g, group_K in enumerate(K):
+            if group_K == 0: continue
+            _, top_idxs = torch.topk(-certainties[groups == g], group_K)
+            reveal_g = torch.as_tensor(unlabeled_indices[groups == g])[top_idxs].tolist()
+            reveal = reveal + reveal_g
         return reveal
 
 class ConfidentlyIncorrect(SelectionFunction):
     """oracle method: label the most confident incorrect predictions"""
-    def __init__(self, uncertainty_model, config):
+    def __init__(self, uncertainty_model, grouper, config):
         self.uncertainty_model = uncertainty_model
         super().__init__(
+            grouper=grouper,
             is_trainable=False,
             config=config
         )
