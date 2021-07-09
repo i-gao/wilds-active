@@ -15,8 +15,6 @@ def initialize_selection_function(config, orig_algorithm, few_shot_algorithm, se
     # initialize selection function to choose target examples to label
     if config.selection_function=='random':
         selection_fn = RandomSampling(select_grouper, config)
-    elif config.selection_function=='stratified':
-        selection_fn = StratifiedSampling(select_grouper, config)
     elif config.selection_function=='uncertainty':
         if config.few_shot_kwargs.get('reset_classifier'): 
             import warnings
@@ -24,6 +22,8 @@ def initialize_selection_function(config, orig_algorithm, few_shot_algorithm, se
         selection_fn = UncertaintySampling(few_shot_algorithm, select_grouper, config)
     elif config.selection_function=='uncertainty_fixed':
         selection_fn = UncertaintySampling(orig_algorithm, select_grouper, config)
+    elif config.selection_function=='highest_loss':
+        selection_fn = HighestLoss(few_shot_algorithm, select_grouper, config)
     elif config.selection_function=='confidently_incorrect':
         selection_fn = ConfidentlyIncorrect(few_shot_algorithm, select_grouper, config)
     elif config.selection_function=='individual_oracle':
@@ -190,6 +190,44 @@ class UncertaintySampling(SelectionFunction):
             reveal = reveal + reveal_g
         return reveal
 
+######### ORACLES (use label information) #########
+
+class HighestLoss(SelectionFunction):
+    """oracle method: label the examples with highest loss"""
+    def __init__(self, uncertainty_model, select_grouper, config):
+        self.uncertainty_model = uncertainty_model
+        super().__init__(
+            select_grouper=select_grouper,
+            is_trainable=False,
+            config=config
+        )
+
+    def select(self, label_manager, K_per_group, unlabeled_indices, groups, group_ids):
+        self.uncertainty_model.eval()
+        # Get loader for estimating uncertainties
+        loader = get_eval_loader(
+            loader='standard',
+            dataset=label_manager.get_unlabeled_subset(),
+            batch_size=1,
+            **self.config.loader_kwargs)
+        iterator = tqdm(loader) if self.config.progress_bar else loader
+
+        # Get uncertainties and predictions
+        losses = []
+        for x, y, m in iterator:
+            res = self.uncertainty_model.evaluate((x, y, m))
+            losses.append(res['objective']) # float, not torch float
+        losses = torch.tensor(losses)
+        
+        # Choose highest loss to reveal labels
+        reveal = []
+        for i, K in enumerate(K_per_group):
+            g = group_ids[i]
+            _, top_idxs = torch.topk(losses[groups == g], K)
+            reveal_g = unlabeled_indices[groups == g][top_idxs].tolist()
+            reveal = reveal + reveal_g
+        return reveal
+
 class ConfidentlyIncorrect(SelectionFunction):
     """oracle method: label the most confident incorrect predictions"""
     def __init__(self, uncertainty_model, select_grouper, config):
@@ -200,20 +238,20 @@ class ConfidentlyIncorrect(SelectionFunction):
             config=config
         )
 
-    def select(self, label_manager, K):
+    def select(self, label_manager, K_per_group, unlabeled_indices, groups, group_ids):
         self.uncertainty_model.eval()
         # Get loader for estimating uncertainties
-        unlabeled_test = label_manager.get_unlabeled_subset()
         loader = get_eval_loader(
             loader='standard',
-            dataset=unlabeled_test,
-            batch_size=self.config.batch_size,
+            dataset=label_manager.get_unlabeled_subset(),
+            batch_size=1,
             **self.config.loader_kwargs)
-
+        iterator = tqdm(loader) if self.config.progress_bar else loader
+        
         # Get uncertainties and predictions
         certainties = []
         correct = []
-        for x, y, m in loader:
+        for x, y, m in iterator:
             res = self.uncertainty_model.evaluate((x, y, m))
             logits = res['y_pred'] # before process_outputs_fn
             probs = F.softmax(logits, 1)
@@ -224,8 +262,13 @@ class ConfidentlyIncorrect(SelectionFunction):
         correct = torch.cat(correct)
 
         # Choose most certain and incorrect to reveal labels
-        _, top_idxs = torch.topk(certainties * ~correct, K)
-        reveal = torch.as_tensor(label_manager.unlabeled_indices)[top_idxs].tolist()
+        reveal = []
+        incorrect_certainties = certainties * ~correct
+        for i, K in enumerate(K_per_group):
+            g = group_ids[i]
+            _, top_idxs = torch.topk(incorrect_certainties[groups == g], K)
+            reveal_g = unlabeled_indices[groups == g][top_idxs].tolist()
+            reveal = reveal + reveal_g
         return reveal
 
 class Oracle(SelectionFunction):
