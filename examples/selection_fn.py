@@ -26,12 +26,8 @@ def initialize_selection_function(config, orig_algorithm, few_shot_algorithm, se
         selection_fn = HighestLoss(few_shot_algorithm, select_grouper, config)
     elif config.selection_function=='confidently_incorrect':
         selection_fn = ConfidentlyIncorrect(few_shot_algorithm, select_grouper, config)
-    elif config.selection_function=='individual_oracle':
-        selection_fn = IndividualOracle(few_shot_algorithm, select_grouper, config)
-    elif config.selection_function=='approximate_individual_oracle':
-        selection_fn = ApproximateIndividualOracle(few_shot_algorithm, select_grouper, config)
-    elif config.selection_function=='approximate_group_oracle':
-        selection_fn = ApproximateGroupOracle(few_shot_algorithm, select_grouper, config)
+    elif config.selection_function=='approximate_lookahead':
+        selection_fn = ApproximateLookahead(few_shot_algorithm, algo_grouper, select_grouper, config)
     else:
         raise ValueError(f'Selection Function {config.selection_function} not recognized.')
 
@@ -271,20 +267,22 @@ class ConfidentlyIncorrect(SelectionFunction):
             reveal = reveal + reveal_g
         return reveal
 
-class Oracle(SelectionFunction):
+class MStepLookahead(SelectionFunction):
     """oracle method: try a gradient step on some points & label those that best improve accuracy"""
     def __init__(self, uncertainty_model, algo_grouper, select_grouper, config):
         self.uncertainty_model = uncertainty_model
-        self.algo_grouper = algo_grouper
+        self.grouper = algo_grouper
+        self.M = config.selection_function_kwargs.get('n_steps', 1)
         super().__init__(
+            select_grouper=select_grouper,
             is_trainable=False,
             config=config
         )
 
-    def _get_delta(self, ind, label_manager):
-        """Try an individual point and return change in val metric after one epoch"""
-        if type(ind) != list: ind = [ind]
-        label_manager.reveal_labels(ind)
+    def _get_delta(self, indices, label_manager):
+        """Try adding indices to the labeled set, train on labeled set, and return change in val metric after M epochs"""
+        if type(indices) != list: indices = [indices]
+        label_manager.reveal_labels(indices)
 
         labeled_dict = configure_split_dict(
             data=label_manager.get_labeled_subset(),
@@ -302,97 +300,40 @@ class Oracle(SelectionFunction):
             grouper=None,
             verbose=False,
             config=self.config)
-
         temp_model = copy.deepcopy(self.uncertainty_model)
         temp_model.train()
-        run_epoch( # train
-            temp_model,
-            labeled_dict,
-            None,
-            0,
-            self.config,
-            train=True)
-        res, _ = run_epoch( # eval
-            temp_model,
-            unlabeled_dict,
-            None,
-            0,
-            self.config,
-            train=False)
+        for epoch in range(self.M):
+            run_epoch(temp_model, labeled_dict, None, epoch, self.config, train=True)
+        res, _ = run_epoch(temp_model, unlabeled_dict, None, 0, self.config, train=False)
         del temp_model
 
-        label_manager.hide_labels(ind)
+        label_manager.hide_labels(indices)
         return res[self.config.val_metric]
 
-    def select(self, label_manager, K):
-        pass
-
-class IndividualOracle(Oracle):
-    """oracle method: try a gradient step on all individual points & label those that best improve accuracy"""
-    def select(self, label_manager, K):
-        unlabeled_indices = label_manager.unlabeled_indices
-
-        label_manager.verbose = False
-        delta = torch.zeros(len(unlabeled_indices))
-        for i, dataset_index in enumerate(tqdm(unlabeled_indices)):
-            delta[i] = self._get_delta(dataset_index, label_manager)
-        label_manager.verbose = True
-
-        # Choose improvement in val metric to reveal labels
-        if self.config.val_metric_decreasing: delta *= -1
-        _, top_idxs = torch.topk(delta, K)
-        reveal = torch.as_tensor(label_manager.unlabeled_indices)[top_idxs].tolist()
-        return reveal
-
-class ApproximateIndividualOracle(Oracle):
-    """oracle method: try a gradient step on G randomly sampled individual points & label those that best improve accuracy"""
-    def __init__(self, uncertainty_model, select_grouper, config):
-        self.G = config.selection_function_kwargs.get('n_simulations', 100)
-        super().__init__(
-            uncertainty_model=uncertainty_model,
-            grouper=grouper,
-            config=config
-        )
-    
-    def select(self, label_manager, K):
-        assert self.G > K
-        unlabeled_indices = label_manager.unlabeled_indices
-        sampled_unlabeled_indices = np.random.choice(unlabeled_indices, size=min(len(unlabeled_indices), self.G), replace=False)
-
-        label_manager.verbose = False
-        delta = torch.zeros(len(sampled_unlabeled_indices))
-        for i, dataset_index in enumerate(tqdm(sampled_unlabeled_indices)):
-            delta[i] = self._get_delta(dataset_index, label_manager)
-        label_manager.verbose = True
-
-        # Choose improvement in val metric to reveal labels
-        if self.config.val_metric_decreasing: delta *= -1
-        _, top_idxs = torch.topk(delta, K)
-        reveal = torch.as_tensor(sampled_unlabeled_indices)[top_idxs].tolist()
-        return reveal
-
-class ApproximateGroupOracle(Oracle):
+class ApproximateLookahead(MStepLookahead):
     """oracle method: try a gradient step on G randomly sampled groups of K & label group that best improves accuracy"""
-    def __init__(self, uncertainty_model, select_grouper, config):
+    def __init__(self, uncertainty_model, algo_grouper, select_grouper, config):
         self.G = config.selection_function_kwargs.get('n_simulations', 100)
+        self.random_sampler = RandomSampling(select_grouper, config)
         super().__init__(
             uncertainty_model=uncertainty_model,
-            grouper=grouper,
+            algo_grouper=algo_grouper,
+            select_grouper=select_grouper,
             config=config
         )
     
-    def select(self, label_manager, K):
-        unlabeled_indices = label_manager.unlabeled_indices
-        sampled_unlabeled_indices = [np.random.choice(unlabeled_indices, size=K, replace=False) for _ in range(self.G)]
+    def select(self, label_manager, K_per_group, unlabeled_indices, groups, group_ids):
+        samples = [self.random_sampler.select(label_manager, K_per_group, unlabeled_indices, groups, group_ids) for _ in range(self.G)]
+        iterator = tqdm(samples) if self.config.progress_bar else samples
 
         label_manager.verbose = False
-        delta = torch.zeros(len(sampled_unlabeled_indices))
-        for i, dataset_indices in enumerate(tqdm(sampled_unlabeled_indices)):
-            delta[i] = self._get_delta(dataset_indices.tolist(), label_manager)
+        delta = torch.zeros(len(samples))
+        for i, sample in enumerate(iterator):
+            delta[i] = self._get_delta(sample, label_manager)
         label_manager.verbose = True
 
         # Choose improvement in val metric to reveal labels
         if self.config.val_metric_decreasing: delta *= -1
-        top_idx = torch.argmax(delta)
-        reveal = sampled_unlabeled_indices[top_idx].tolist()
+        top_idx = torch.argmax(delta).item()
+        reveal = samples[top_idx]
         return reveal

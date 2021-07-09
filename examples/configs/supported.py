@@ -37,7 +37,6 @@ optimizers = ['SGD', 'Adam', 'AdamW']
 schedulers = ['linear_schedule_with_warmup', 'ReduceLROnPlateau', 'StepLR']
 selection_functions = [
     'random', 'uncertainty', 'uncertainty_fixed', 
-    'highest_loss', 'confidently_incorrect', 'individual_oracle', 'approximate_individual_oracle',
-    'approximate_group_oracle'
+    'highest_loss', 'confidently_incorrect', 'approximate_lookahead'
 ]
 few_shot_algorithms = ['finetune', 'linear_probe']
