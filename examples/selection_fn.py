@@ -153,34 +153,6 @@ class RandomSampling(SelectionFunction):
             reveal = reveal + reveal_g
         return reveal
 
-# class StratifiedSampling(SelectionFunction):
-#     def __init__(self, select_grouper, config):
-#         assert 
-#         super().__init__(
-#             select_grouper=select_grouper,
-#             is_trainable=False,
-#             config=config
-#         )
-    
-#     def select(self, label_manager, K):
-#         groups, group_counts = self.grouper.metadata_to_group(
-#             label_manager.get_unlabeled_subset().metadata_array,
-#             return_counts=True)
-#         group_counts = group_counts.numpy().astype('float64')
-#         group_choices = np.random.choice(
-#             np.arange(len(group_counts)),
-#             K,
-#             p=group_counts/sum(group_counts))
-#         unlabeled_indices = np.array(label_manager.unlabeled_indices)
-#         reveal = [
-#             np.random.choice(
-#                 unlabeled_indices[groups == g],
-#                 size=sum(group_choices == g),
-#                 replace=sum(group_choices == g) <= sum(groups == g))
-#             for g in range(len(group_counts))]
-#         reveal = np.concatenate(reveal).tolist()       
-#         return reveal
-
 class UncertaintySampling(SelectionFunction):
     def __init__(self, uncertainty_model, select_grouper, config):
         self.uncertainty_model = uncertainty_model
@@ -209,7 +181,7 @@ class UncertaintySampling(SelectionFunction):
             certainties.append(torch.max(probs, 1)[0])
         certainties = torch.cat(certainties)
 
-        # Choose K most uncertain to reval labels
+        # Choose most uncertain to reveal labels
         reveal = []
         for i, K in enumerate(K_per_group):
             g = group_ids[i]
@@ -251,7 +223,7 @@ class ConfidentlyIncorrect(SelectionFunction):
         certainties = torch.cat(certainties)
         correct = torch.cat(correct)
 
-        # Choose K most certain and incorrect to reval labels
+        # Choose most certain and incorrect to reveal labels
         _, top_idxs = torch.topk(certainties * ~correct, K)
         reveal = torch.as_tensor(label_manager.unlabeled_indices)[top_idxs].tolist()
         return reveal
@@ -323,7 +295,7 @@ class IndividualOracle(Oracle):
             delta[i] = self._get_delta(dataset_index, label_manager)
         label_manager.verbose = True
 
-        # Choose K improvement in val metric to reval labels
+        # Choose improvement in val metric to reveal labels
         if self.config.val_metric_decreasing: delta *= -1
         _, top_idxs = torch.topk(delta, K)
         reveal = torch.as_tensor(label_manager.unlabeled_indices)[top_idxs].tolist()
@@ -350,7 +322,7 @@ class ApproximateIndividualOracle(Oracle):
             delta[i] = self._get_delta(dataset_index, label_manager)
         label_manager.verbose = True
 
-        # Choose K improvement in val metric to reval labels
+        # Choose improvement in val metric to reveal labels
         if self.config.val_metric_decreasing: delta *= -1
         _, top_idxs = torch.topk(delta, K)
         reveal = torch.as_tensor(sampled_unlabeled_indices)[top_idxs].tolist()
@@ -376,7 +348,7 @@ class ApproximateGroupOracle(Oracle):
             delta[i] = self._get_delta(dataset_indices.tolist(), label_manager)
         label_manager.verbose = True
 
-        # Choose K improvement in val metric to reval labels
+        # Choose improvement in val metric to reveal labels
         if self.config.val_metric_decreasing: delta *= -1
         top_idx = torch.argmax(delta)
         reveal = sampled_unlabeled_indices[top_idx].tolist()
