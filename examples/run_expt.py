@@ -276,7 +276,7 @@ def main():
             select_grouper = CombinatorialGrouper(
                 dataset=full_dataset,
                 groupby_fields=config.selectby_fields)
-            selection_fn = initialize_selection_function(config, algorithm, few_shot_algorithm, grouper=select_grouper)
+            selection_fn = initialize_selection_function(config, algorithm, few_shot_algorithm, select_grouper, algo_grouper=train_grouper)
             run_active_learning(
                 selection_fn=selection_fn,
                 few_shot_algorithm=few_shot_algorithm,

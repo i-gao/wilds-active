@@ -11,28 +11,27 @@ from tqdm import tqdm
 import os
 from shutil import copyfile
 
-def initialize_selection_function(config, orig_algorithm, few_shot_algorithm, grouper=None):
+def initialize_selection_function(config, orig_algorithm, few_shot_algorithm, select_grouper, algo_grouper=None):
     # initialize selection function to choose target examples to label
     if config.selection_function=='random':
-        selection_fn = RandomSampling(grouper, config)
+        selection_fn = RandomSampling(select_grouper, config)
     elif config.selection_function=='stratified':
-        assert grouper is not None
-        selection_fn = StratifiedSampling(grouper, config)
+        selection_fn = StratifiedSampling(select_grouper, config)
     elif config.selection_function=='uncertainty':
         if config.few_shot_kwargs.get('reset_classifier'): 
             import warnings
             warnings.warn("Running uncertainty sampling using a randomly initialized logits layer.")
-        selection_fn = UncertaintySampling(few_shot_algorithm, grouper, config)
+        selection_fn = UncertaintySampling(few_shot_algorithm, select_grouper, config)
     elif config.selection_function=='uncertainty_fixed':
-        selection_fn = UncertaintySampling(orig_algorithm, grouper, config)
+        selection_fn = UncertaintySampling(orig_algorithm, select_grouper, config)
     elif config.selection_function=='confidently_incorrect':
-        selection_fn = ConfidentlyIncorrect(few_shot_algorithm, grouper, config)
+        selection_fn = ConfidentlyIncorrect(few_shot_algorithm, select_grouper, config)
     elif config.selection_function=='individual_oracle':
-        selection_fn = IndividualOracle(few_shot_algorithm, grouper, config)
+        selection_fn = IndividualOracle(few_shot_algorithm, select_grouper, config)
     elif config.selection_function=='approximate_individual_oracle':
-        selection_fn = ApproximateIndividualOracle(few_shot_algorithm, grouper, config)
+        selection_fn = ApproximateIndividualOracle(few_shot_algorithm, select_grouper, config)
     elif config.selection_function=='approximate_group_oracle':
-        selection_fn = ApproximateGroupOracle(few_shot_algorithm, grouper, config)
+        selection_fn = ApproximateGroupOracle(few_shot_algorithm, select_grouper, config)
     else:
         raise ValueError(f'Selection Function {config.selection_function} not recognized.')
 
@@ -76,35 +75,37 @@ class SelectionFunction():
         Labels K examples by passing label_manager the indexes of examples to reveal
         Wrapper for the select() function implemented by subclasses
         """
-        import pdb
-        pdb.set_trace()
         groups = self.select_grouper.metadata_to_group(label_manager.unlabeled_metadata_array)
-        remaining = torch.zeros(groups.max() + 1)
-        remaining[groups.unique()] = K 
-        remaining = remaining.int().tolist()
+        group_ids = groups.unique().int().tolist()
+        remaining = (torch.ones(len(group_ids)) * K).int().tolist()
         reveal = []
         for idx in self._prior_selections:
             i = label_manager.unlabeled_indices.index(idx)
             g = groups[i]
-            if remaining[g] > 0:
+            g_ind = group_ids.index(g)
+            if remaining[g_ind] > 0:
                 reveal.append(idx)
-                remaining[g] -= 1
+                remaining[g_ind] -= 1
             if sum(remaining) == 0: break
         self._prior_selections = [idx for idx in self._prior_selections if idx not in set(reveal)]
 
         if sum(remaining) > 0:
-            reveal = reveal + self.select(label_manager, remaining, groups)
+            unlabeled_indices = torch.tensor(label_manager.unlabeled_indices)
+            reveal = reveal + self.select(label_manager, remaining, unlabeled_indices, groups, group_ids)
 
         label_manager.reveal_labels(reveal)
         self.save_selections(reveal)
 
-    def select(self, label_manager, K):
+    def select(self, label_manager, K_per_group:[int], unlabeled_indices: torch.Tensor, groups: torch.Tensor, group_ids:[int]):
         """
-        Labels K points by passing label_manager the indexes of examples to reveal
+        Selects examples from the label manager's unlabeled subset to label.
         Abstract fn implemented in each child class
         Args:
             - label_manager (LabelManager object): see active.py; keeps track of which test points have revealed labels
-            - K: tensor where index i represents the number of examples to select for group i
+            - K_per_group: list where K_per_group[i] is the number of examples left to label in group group_ids[i]
+            - unlabeled_indices: (torch Tensor) output of label_manager.unlabeled_indices, cast as a tensor
+            - groups: (torch Tensor) groups[i] is the group of example label_manager.unlabeled_indices[i]
+            - group_ids: names of groups; shares indexing with K_per_group
         """
         raise NotImplementedError
 
@@ -140,15 +141,14 @@ class RandomSampling(SelectionFunction):
             config=config
         )
     
-    def select(self, label_manager, K, groups):
-        unlabeled_indices = torch.tensor(label_manager.unlabeled_indices)
+    def select(self, label_manager, K_per_group, unlabeled_indices, groups, group_ids):
         reveal = []
-        for g, group_K in enumerate(K):
-            if group_K == 0: continue
+        for i, K in enumerate(K_per_group):
+            g = group_ids[i]
             reveal_g = np.random.choice(
                 unlabeled_indices[groups == g],
                 replace=False, # assuming this is large enough
-                size=min(group_K, sum(groups == g))
+                size=min(K, sum(groups == g))
             ).tolist()
             reveal = reveal + reveal_g
         return reveal
@@ -182,15 +182,15 @@ class RandomSampling(SelectionFunction):
 #         return reveal
 
 class UncertaintySampling(SelectionFunction):
-    def __init__(self, uncertainty_model, grouper, config):
+    def __init__(self, uncertainty_model, select_grouper, config):
         self.uncertainty_model = uncertainty_model
         super().__init__(
-            grouper=grouper,
+            select_grouper=select_grouper,
             is_trainable=False,
             config=config
         )
 
-    def select(self, label_manager, K):
+    def select(self, label_manager, K_per_group, unlabeled_indices, groups, group_ids):
         self.uncertainty_model.eval()
         # Get loader for estimating uncertainties
         unlabeled_test = label_manager.get_unlabeled_subset()
@@ -211,20 +211,19 @@ class UncertaintySampling(SelectionFunction):
 
         # Choose K most uncertain to reval labels
         reveal = []
-        unlabeled_indices = torch.tensor(label_manager.unlabeled_indices)
-        for g, group_K in enumerate(K):
-            if group_K == 0: continue
-            _, top_idxs = torch.topk(-certainties[groups == g], group_K)
-            reveal_g = torch.as_tensor(unlabeled_indices[groups == g])[top_idxs].tolist()
+        for i, K in enumerate(K_per_group):
+            g = group_ids[i]
+            _, top_idxs = torch.topk(-certainties[groups == g], K)
+            reveal_g = unlabeled_indices[groups == g][top_idxs].tolist()
             reveal = reveal + reveal_g
         return reveal
 
 class ConfidentlyIncorrect(SelectionFunction):
     """oracle method: label the most confident incorrect predictions"""
-    def __init__(self, uncertainty_model, grouper, config):
+    def __init__(self, uncertainty_model, select_grouper, config):
         self.uncertainty_model = uncertainty_model
         super().__init__(
-            grouper=grouper,
+            select_grouper=select_grouper,
             is_trainable=False,
             config=config
         )
@@ -259,9 +258,9 @@ class ConfidentlyIncorrect(SelectionFunction):
 
 class Oracle(SelectionFunction):
     """oracle method: try a gradient step on some points & label those that best improve accuracy"""
-    def __init__(self, uncertainty_model, grouper, config):
+    def __init__(self, uncertainty_model, algo_grouper, select_grouper, config):
         self.uncertainty_model = uncertainty_model
-        self.grouper = grouper
+        self.algo_grouper = algo_grouper
         super().__init__(
             is_trainable=False,
             config=config
@@ -332,7 +331,7 @@ class IndividualOracle(Oracle):
 
 class ApproximateIndividualOracle(Oracle):
     """oracle method: try a gradient step on G randomly sampled individual points & label those that best improve accuracy"""
-    def __init__(self, uncertainty_model, grouper, config):
+    def __init__(self, uncertainty_model, select_grouper, config):
         self.G = config.selection_function_kwargs.get('n_simulations', 100)
         super().__init__(
             uncertainty_model=uncertainty_model,
@@ -359,7 +358,7 @@ class ApproximateIndividualOracle(Oracle):
 
 class ApproximateGroupOracle(Oracle):
     """oracle method: try a gradient step on G randomly sampled groups of K & label group that best improves accuracy"""
-    def __init__(self, uncertainty_model, grouper, config):
+    def __init__(self, uncertainty_model, select_grouper, config):
         self.G = config.selection_function_kwargs.get('n_simulations', 100)
         super().__init__(
             uncertainty_model=uncertainty_model,
