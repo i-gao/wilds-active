@@ -141,13 +141,13 @@ def main():
     ## Initialize logs
     if os.path.exists(config.log_dir) and config.resume:
         resume=True
-        mode='a'
+        config.mode='a'
     elif os.path.exists(config.log_dir) and config.eval_only:
         resume=False
-        mode='a'
+        config.mode='a'
     else:
         resume=False
-        mode='w'
+        config.mode='w'
 
     if not os.path.exists(config.log_dir):
         os.makedirs(config.log_dir)
@@ -248,7 +248,7 @@ def main():
             pass
 
     # Resume from most recent model in log_dir
-    model_prefix = get_model_prefix(datasets['train'], config, load=(config.resume or config.active_learning))
+    model_prefix = get_model_prefix(datasets['train'], config)
     if not config.eval_only:
         ## If doing active learning, expects to load a model trained on source
         resume_success = False

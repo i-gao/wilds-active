@@ -144,7 +144,7 @@ class RandomSampling(SelectionFunction):
             reveal_g = np.random.choice(
                 unlabeled_indices[groups == g],
                 replace=False, # assuming this is large enough
-                size=min(K, sum(groups == g))
+                size=min(K, sum(groups == g).int().item())
             ).tolist()
             reveal = reveal + reveal_g
         return reveal
