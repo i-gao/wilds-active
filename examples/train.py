@@ -4,33 +4,45 @@ import torch
 from utils import save_model, save_pred, get_pred_prefix, get_model_prefix
 import torch.autograd.profiler as profiler
 from configs.supported import process_outputs_functions
-import numpy as np
+from algorithms.metalearning import sample_metalearning_task
 
 from wilds.common.data_loaders import get_train_loader, get_eval_loader
 from wilds.datasets.wilds_dataset import WILDSSubset
 
-def run_maml_epoch(algorithm, dataset, general_logger, epoch, config, train=False, labeled_set=None):
+def run_metalearning_epoch(algorithm, dataset, general_logger, epoch, config, train=False, labeled_set=None):
     if general_logger and dataset['verbose']:
         general_logger.write(f"\n{dataset['name']}:\n")
 
     # meta-training on tasks
     if train: 
-        for _ in range(config.maml_meta_batch_size):
-            task, adaptation_batch, eval_loader = sample_maml_task(
-                config.maml_k,
-                algorithm.grouper,
-                dataset['dataset'],
-                config.batch_size,
-                config.loader_kwargs,
+        algorithm.train()
+        for _ in range(config.metalearning_kwargs.get('meta_batch_size')):
+            task, adaptation_batch, evaluation_batch = sample_metalearning_task(
+                K=config.metalearning_k,
+                M=config.metalearning_kwargs.get('n_eval_examples'),
+                grouper=algorithm.grouper,
+                n_groups_task=config.metalearning_kwargs.get('n_groups_task'),
+                support_set=dataset['dataset'],
                 labeled_set=labeled_set
             )
             general_logger.write(f'Sampled task {task}\n')
-            algorithm.adapt_task(adaptation_batch, eval_loader)
-        algorithm.meta_update(config.maml_meta_batch_size)
+            algorithm.adapt_task(adaptation_batch, evaluation_batch)
     
     # finetune and then evaluate
     adapt_data = labeled_set['loader'] if labeled_set else dataset['loader']
-    epoch_results = algorithm.evaluate(adapt_data, dataset['loader']) 
+    # need to convert adapt_data -> tensor
+    _, adaptation_batch, _ = sample_metalearning_task(
+        K=config.metalearning_k,
+        M=config.metalearning_kwargs.get('n_eval_examples'),
+        grouper=None,
+        n_groups_task=None,
+        support_set=dataset['dataset'],
+        labeled_set=labeled_set
+    )
+    _, adaptation_batch_groups = algorithm.grouper.metadata_to_group(adaptation_batch[2]).unique(return_counts=True)# TODO: remove
+    general_logger.write(f'Sampled for evaluation batch with groups {adaptation_batch_groups}\n') # TODO: remove
+
+    epoch_results = algorithm.evaluate(adaptation_batch, dataset['loader']) 
     
     epoch_y_pred = epoch_results['y_pred'].clone().detach()
     if config.process_outputs_function is not None:
@@ -131,7 +143,7 @@ def train(algorithm, datasets, general_logger, config, epoch_offset, best_val_me
     for epoch in range(epoch_offset, config.n_epochs):
         general_logger.write('\nEpoch [%d]:\n' % epoch)
 
-        epoch_fn = run_maml_epoch if config.algorithm == 'MAML' else run_epoch
+        epoch_fn = run_metalearning_epoch if config.algorithm in ['MAML', 'ANIL'] else run_epoch
 
         # First run training
         epoch_fn(algorithm, datasets[train_split], general_logger, epoch, config, train=True)
@@ -202,42 +214,6 @@ def evaluate(algorithm, datasets, epoch, general_logger, config):
         # Skip saving train preds, since the train loader generally shuffles the data
         if split != 'train':
             save_pred_if_needed(y_pred, dataset, epoch, config, is_best=False, force_save=True)
-
-def sample_maml_task(K, grouper, support_set, batch_size, loader_kwargs, labeled_set=None):
-    """ 
-    Args: 
-        - K -- number of labeled shots for adaptation to generate per task
-        - grouper
-        - support_set -- the WILDSDataset to sample tasks (groups) from
-        - labeled_set -- (optional) restrict labeled values to come from this set
-    """
-    # Sample a task (a single group)
-    support_groups = grouper.metadata_to_group(support_set.metadata_array)
-    task = np.random.choice(support_groups.unique().numpy())
-
-    if labeled_set is None: labeled_set = support_set
-    labeled_groups = grouper.metadata_to_group(labeled_set.metadata_array)
-
-    adaptation_idx = np.random.choice(
-        np.arange(len(labeled_set))[labeled_groups == task],
-        K, 
-        replace=True
-    )
-    x, y, m = zip(*[labeled_set[i] for i in adaptation_idx])
-    adaptation_batch = (torch.stack(x), torch.stack(y), torch.stack(m))
-
-    task_support_set = WILDSSubset(
-        support_set.dataset,
-        list(set(support_set.indices[support_groups == task]) - set(adaptation_idx)),
-        support_set.transform
-    )
-    evaluation_loader = get_eval_loader(
-        loader='standard',
-        dataset=task_support_set,
-        batch_size=batch_size,
-        **loader_kwargs
-    )
-    return task, adaptation_batch, evaluation_loader
 
 def log_results(algorithm, dataset, general_logger, epoch, batch_idx):
     if algorithm.has_log:

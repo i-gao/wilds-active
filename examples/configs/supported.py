@@ -32,12 +32,11 @@ transforms = ['bert', 'image_base', 'image_resize_and_center_crop', 'poverty_tra
 models = ['resnet18_ms', 'resnet50', 'resnet34', 'wideresnet50',
          'densenet121', 'bert-base-uncased', 'distilbert-base-uncased',
          'gin-virtual', 'logistic_regression', 'code-gpt-py']
-algorithms = ['ERM', 'groupDRO', 'deepCORAL', 'IRM', 'MAML']
+algorithms = ['ERM', 'groupDRO', 'deepCORAL', 'IRM', 'MAML', 'ANIL']
 optimizers = ['SGD', 'Adam', 'AdamW']
 schedulers = ['linear_schedule_with_warmup', 'ReduceLROnPlateau', 'StepLR']
 selection_functions = [
-    'random', 'stratified', 'uncertainty', 'uncertainty_fixed', 
-    'confidently_incorrect', 'individual_oracle', 'approximate_individual_oracle',
-    'approximate_group_oracle'
+    'random', 'uncertainty', 'uncertainty_fixed', 
+    'highest_loss', 'confidently_incorrect', 'approximate_lookahead'
 ]
 few_shot_algorithms = ['finetune', 'linear_probe']

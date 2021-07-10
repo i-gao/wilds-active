@@ -10,9 +10,8 @@ class LabelManager:
     labels and index these examples separately.
     Args:
         - subset: subset to hide/reveal labels for
-        - train: 
     """
-    def __init__(self, subset: WILDSSubset, train=None, verbose=True):
+    def __init__(self, subset: WILDSSubset, verbose=True):
         self.dataset = subset.dataset
         self.transform = subset.transform
         self._idx = set(subset.indices)
@@ -59,7 +58,23 @@ class LabelManager:
     @property
     def unlabeled_indices(self):
         return list(self._idx - self._idx_labels_revealed)
+    
+    @property
+    def unlabeled_metadata_array(self):
+        return self.get_unlabeled_subset().metadata_array
+    
+    @property
+    def labeled_metadata_array(self):
+        return self.get_labeled_subset().metadata_array
 
+    @property
+    def unlabeled_y_array(self):
+        return self.get_unlabeled_subset().y_array
+    
+    @property
+    def labeled_y_array(self):
+        return self.get_labeled_subset().y_array
+        
 def run_active_learning(selection_fn, few_shot_algorithm, datasets, general_logger, grouper, config, full_dataset=None):
     label_manager = datasets['test']['label_manager']
     joint_training = config.few_shot_kwargs.get('train_joint_source_target', False)
@@ -90,7 +105,7 @@ def run_active_learning(selection_fn, few_shot_algorithm, datasets, general_logg
         ## Train selection function
         # selection_fn.update()
         ## Get a few labels
-        selection_fn.select_and_reveal(label_manager=label_manager, K=config.n_labels_round)
+        selection_fn.select_and_reveal(label_manager=label_manager, K=config.n_shots)
         
         ## Refresh dataloaders
         if joint_training:

@@ -59,7 +59,8 @@ def main():
     parser.add_argument('--selection_function', choices=supported.selection_functions)
     parser.add_argument('--selection_function_kwargs', nargs='*', action=ParseKwargs, default={}, help="keyword arguments for selection fn passed as key1=value1 key2=value2")
     parser.add_argument('--n_rounds', type=int, default=1, help="number of times to repeat the selection-train cycle")
-    parser.add_argument('--n_labels_round', type=int, help="number of labels to actively learn each round")
+    parser.add_argument('--selectby_fields', nargs='+', help="If set, acts like a grouper and n_shots are acquired per selection group (e.g. y x hospital selects K examples per y x hospital).")
+    parser.add_argument('--n_shots', type=int, help="number of shots (labels) to actively acquire each round")
     parser.add_argument('--few_shot_algorithm', choices=supported.few_shot_algorithms)
     parser.add_argument('--few_shot_kwargs', nargs='*', action=ParseKwargs, default={},
         help='keyword arguments for few shot algorithm initialization passed as key1=value1 key2=value2')
@@ -85,11 +86,10 @@ def main():
     parser.add_argument('--coral_penalty_weight', type=float)
     parser.add_argument('--irm_lambda', type=float)
     parser.add_argument('--irm_penalty_anneal_iters', type=int)
-    parser.add_argument('--maml_k', type=int)
-    parser.add_argument('--maml_meta_batch_size', type=int)
-    parser.add_argument('--maml_adapt_lr', type=float)
-    parser.add_argument('--maml_n_adapt_steps', type=int)
     parser.add_argument('--maml_first_order', type=parse_bool, const=True, nargs='?')
+    parser.add_argument('--metalearning_k', type=int)
+    parser.add_argument('--metalearning_adapt_lr', type=float)
+    parser.add_argument('--metalearning_kwargs', nargs='*', action=ParseKwargs, default={})
     parser.add_argument('--algo_log_metric')
 
     # Model selection
@@ -139,9 +139,15 @@ def main():
     config.device = torch.device("cuda:" + str(config.device)) if torch.cuda.is_available() else torch.device("cpu")
 
     ## Initialize logs
-    if os.path.exists(config.log_dir) and config.resume:
+    if os.path.exists(config.log_dir) and config.load_dir is None and config.resume:
         config.resume=True
         config.mode='a'
+    elif os.path.exists(config.log_dir) and config.load_dir == config.log_dir and config.resume:
+        config.resume=True
+        config.mode='a'
+    elif config.load_dir != config.log_dir and config.resume:
+        config.resume=True
+        config.mode='w'
     elif os.path.exists(config.log_dir) and config.eval_only:
         config.resume=False
         config.mode='a'
@@ -272,7 +278,10 @@ def main():
 
         if config.active_learning:
             few_shot_algorithm = initialize_few_shot_algorithm(config, algorithm)
-            selection_fn = initialize_selection_function(config, algorithm, few_shot_algorithm, grouper=train_grouper)
+            select_grouper = CombinatorialGrouper(
+                dataset=full_dataset,
+                groupby_fields=config.selectby_fields)
+            selection_fn = initialize_selection_function(config, algorithm, few_shot_algorithm, select_grouper, algo_grouper=train_grouper)
             run_active_learning(
                 selection_fn=selection_fn,
                 few_shot_algorithm=few_shot_algorithm,
