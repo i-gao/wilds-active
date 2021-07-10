@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 import torch
 import pandas as pd
+import re
 
 from algorithms.algorithm import Algorithm
 
@@ -70,6 +71,9 @@ def load(module, path, device=None):
         state = torch.load(path, map_location=device)
     else:
         state = torch.load(path)
+
+    ## edge case: if module is a metalearning model, we want to load the state into self.meta_model.module (l2l artifact)
+    if hasattr(module, 'meta_model'): module = module.meta_model.module
 
     module_type = "algorithm" if isinstance(module, Algorithm) else "model"
     state_type = "algorithm" if "algorithm" in state else "model"

@@ -26,5 +26,5 @@ def initialize_few_shot_algorithm(config, algorithm):
     else:
         raise ValueError(f'Selection Function {config.selection_function} not recognized.')
     # sanity check
-    print(f"\nNumber of unfrozen parameters: {len(list(filter(lambda p: p.requires_grad, few_shot_algorithm.model.parameters())))}")
+    print(f"\nNumber of unfrozen parameters: {len(list(filter(lambda p: p.requires_grad, few_shot_algorithm.parameters())))}")
     return few_shot_algorithm 
