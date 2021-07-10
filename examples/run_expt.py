@@ -34,7 +34,7 @@ def main():
     parser.add_argument('--algorithm', required=True, choices=supported.algorithms)
     parser.add_argument('--root_dir', required=True,
                         help='The directory where [dataset]/data can be found (or should be downloaded to, if it does not exist).')
-    parser.add_argument('--load_dir', default=None, type=str, help="Path to log dir of model to load and continue from")
+    parser.add_argument('--pretrained_model_path', default=None, type=str, help="Specify a path to a pretrained model's weights")
 
     # Dataset
     parser.add_argument('--split_scheme', help='Identifies how the train/val/test split is constructed. Choices are dataset-specific.')
@@ -130,7 +130,7 @@ def main():
     parser.add_argument('--no_group_logging', type=parse_bool, const=True, nargs='?')
     parser.add_argument('--use_wandb', type=parse_bool, const=True, nargs='?', default=False)
     parser.add_argument('--progress_bar', type=parse_bool, const=True, nargs='?', default=False)
-    parser.add_argument('--resume', type=parse_bool, const=True, nargs='?', default=False)
+    parser.add_argument('--resume', type=parse_bool, const=True, nargs='?', default=False, help='Whether to resume from the most recent saved model in the current log_dir.')
 
     config = parser.parse_args()
     config = populate_defaults(config)
@@ -139,21 +139,15 @@ def main():
     config.device = torch.device("cuda:" + str(config.device)) if torch.cuda.is_available() else torch.device("cpu")
 
     ## Initialize logs
-    if os.path.exists(config.log_dir) and config.load_dir is None and config.resume:
-        config.resume=True
-        config.mode='a'
-    elif os.path.exists(config.log_dir) and config.load_dir == config.log_dir and config.resume:
-        config.resume=True
-        config.mode='a'
-    elif config.load_dir != config.log_dir and config.resume:
-        config.resume=True
-        config.mode='w'
+    if os.path.exists(config.log_dir) and config.resume:
+        resume=True
+        mode='a'
     elif os.path.exists(config.log_dir) and config.eval_only:
-        config.resume=False
-        config.mode='a'
+        resume=False
+        mode='a'
     else:
-        config.resume=False
-        config.mode='w'
+        resume=False
+        mode='w'
 
     if not os.path.exists(config.log_dir):
         os.makedirs(config.log_dir)
@@ -239,9 +233,23 @@ def main():
         datasets=datasets,
         train_grouper=train_grouper)
 
+    # Load pretrained weights if specified (this can be overriden by resume)
+    if config.pretrained_model_path is not None and os.path.exists(config.pretrained_model_path):
+        # The full model name is expected to be specified, so just load.
+        try:
+            prev_epoch, best_val_metric = load(algorithm, config.pretrained_model_path, device=config.device)
+            epoch_offset = 0
+            logger.write(
+                (f'Initialized algorithm with pretrained weights from {config.pretrained_model_path} ')
+                + (f'previously trained for {prev_epoch} epochs ' if prev_epoch else '')
+                + (f'with previous val metric {best_val_metric} ' if best_val_metric else '')
+            )
+        except:
+            pass
+
+    # Resume from most recent model in log_dir
     model_prefix = get_model_prefix(datasets['train'], config, load=(config.resume or config.active_learning))
     if not config.eval_only:
-        ## Load saved results if resuming
         ## If doing active learning, expects to load a model trained on source
         resume_success = False
         if config.resume:
@@ -249,7 +257,7 @@ def main():
             if not os.path.exists(save_path):
                 epochs = [
                     int(file.split('epoch:')[1].split('_')[0])
-                    for file in os.listdir(config.load_dir) if file.endswith('.pth')]
+                    for file in os.listdir(config.log_dir) if file.endswith('.pth')]
                 if len(epochs) > 0:
                     latest_epoch = max(epochs)
                     save_path = model_prefix + f'epoch:{latest_epoch}_model.pth'
@@ -259,17 +267,6 @@ def main():
                 logger.write(f'Resuming from epoch {epoch_offset} with best val metric {best_val_metric}')
                 resume_success = True
             except FileNotFoundError:
-                pass
-        elif config.active_learning:
-            # hack: assuming that all models are trained on seed 0, make sure to load seed 0 model
-            save_path = re.sub("seed:.", "seed:0", model_prefix) + 'epoch:best_model.pth'
-            try:
-                best_epoch, best_val_metric = load(algorithm, save_path, config.device)
-                epoch_offset = 0
-                logger.write(f'Using model from epoch {best_epoch} with best val metric {best_val_metric}')
-                resume_success = True
-            except FileNotFoundError:
-                logger.write("Could not find that model. Starting from scratch.")
                 pass
 
         if resume_success == False:
