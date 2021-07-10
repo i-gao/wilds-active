@@ -86,11 +86,10 @@ def main():
     parser.add_argument('--coral_penalty_weight', type=float)
     parser.add_argument('--irm_lambda', type=float)
     parser.add_argument('--irm_penalty_anneal_iters', type=int)
-    parser.add_argument('--maml_k', type=int)
-    parser.add_argument('--maml_meta_batch_size', type=int)
-    parser.add_argument('--maml_adapt_lr', type=float)
-    parser.add_argument('--maml_n_adapt_steps', type=int)
     parser.add_argument('--maml_first_order', type=parse_bool, const=True, nargs='?')
+    parser.add_argument('--metalearning_k', type=int)
+    parser.add_argument('--metalearning_adapt_lr', type=float)
+    parser.add_argument('--metalearning_kwargs', nargs='*', action=ParseKwargs, default={})
     parser.add_argument('--algo_log_metric')
 
     # Model selection
@@ -140,9 +139,15 @@ def main():
     config.device = torch.device("cuda:" + str(config.device)) if torch.cuda.is_available() else torch.device("cpu")
 
     ## Initialize logs
-    if os.path.exists(config.log_dir) and config.resume:
+    if os.path.exists(config.log_dir) and config.load_dir is None and config.resume:
         config.resume=True
         config.mode='a'
+    elif os.path.exists(config.log_dir) and config.load_dir == config.log_dir and config.resume:
+        config.resume=True
+        config.mode='a'
+    elif config.load_dir != config.log_dir and config.resume:
+        config.resume=True
+        config.mode='w'
     elif os.path.exists(config.log_dir) and config.eval_only:
         config.resume=False
         config.mode='a'

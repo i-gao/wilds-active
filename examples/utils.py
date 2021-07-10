@@ -183,12 +183,13 @@ def configure_split_dict(split, data, split_name, train, verbose, grouper, confi
     split_dict = defaultdict(dict)
 
     # Loaders and dict
-    if data is not None: configure_loaders(
-        split_dict=split_dict,
-        data=data,
-        train=train,
-        grouper=grouper,
-        config=config)
+    if data is not None: 
+        configure_loaders(
+            split_dict=split_dict,
+            data=data,
+            train=train,
+            grouper=grouper,
+            config=config)
 
     # Set fields
     split_dict['split'] = split

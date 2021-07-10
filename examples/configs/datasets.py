@@ -54,9 +54,10 @@ dataset_defaults = {
         'scheduler': None,
         'batch_size': 32,
         'lr': 0.001,
-        'maml_adapt_lr': 0.001,
-        'maml_n_adapt_steps': 1,
-        'maml_meta_batch_size': 3,
+        'metalearning_adapt_lr': 0.001, # same as outer lr
+        'metalearning_kwargs': {
+            'meta_batch_size': 3, # num train groups
+        },
         'weight_decay': 0.01,
         'n_epochs': 5,
         'n_groups_per_batch': 2,
@@ -128,9 +129,10 @@ dataset_defaults = {
         'scheduler_kwargs': {'gamma': 0.96},
         'batch_size': 64,
         'lr': 0.0001,
-        'maml_adapt_lr': 0.0001,
-        'maml_n_adapt_steps': 10,
-        'maml_meta_batch_size': 3,
+        'metalearning_adapt_lr': 0.0001, # same as outer lr
+        'metalearning_kwargs': {
+            'meta_batch_size': 12 # num train groups
+        },
         'weight_decay': 0.0,
         'n_epochs': 50,
         'n_groups_per_batch': 8,
@@ -150,9 +152,10 @@ dataset_defaults = {
         'algo_log_metric': 'accuracy',
         'model': 'resnet50',
         'lr': 3e-5,
-        'maml_adapt_lr': 3e-5,
-        'maml_n_adapt_steps': 2,
-        'maml_meta_batch_size': 50,
+        'metalearning_adapt_lr': 3e-5, # same as outer lr
+        'metalearning_kwargs': {
+            'meta_batch_size': 243 # num train groups
+        },
         'weight_decay': 0.0,
         'batch_size': 16,
         'n_epochs': 12,
