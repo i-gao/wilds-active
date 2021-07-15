@@ -6,13 +6,13 @@ import torch
 import torch.nn as nn
 import torchvision
 import sys
-import re
 from collections import defaultdict
 
 # TODO: This is needed to test the WILDS package locally. Remove later -Tony
 sys.path.insert(1, os.path.join(sys.path[0], '..'))
 
 import wilds
+from wilds.common.data_loaders import get_train_loader, get_eval_loader
 from wilds.common.grouper import CombinatorialGrouper
 
 from utils import set_seed, Logger, log_config, ParseKwargs, load, log_group_data, parse_bool, get_model_prefix, configure_split_dict
@@ -40,10 +40,14 @@ def main():
     parser.add_argument('--split_scheme', help='Identifies how the train/val/test split is constructed. Choices are dataset-specific.')
     parser.add_argument('--dataset_kwargs', nargs='*', action=ParseKwargs, default={})
     parser.add_argument('--download', default=False, type=parse_bool, const=True, nargs='?',
-                        help='If true, tries to downloads the dataset if it does not exist in root_dir.')
+                        help='If true, tries to download the dataset if it does not exist in root_dir.')
     parser.add_argument('--frac', type=float, default=1.0,
                         help='Convenience parameter that scales all dataset splits down to the specified fraction, for development purposes. Note that this also scales the test set down, so the reported numbers are not comparable with the full test set.')
     parser.add_argument('--version', default=None, type=str)
+
+    # Unlabeled Dataset
+    parser.add_argument('--unlabeled_split', default=None, type=str, help='Unlabeled split to use')
+    parser.add_argument('--unlabeled_version', default=None, type=str)
 
     # Loaders
     parser.add_argument('--loader_kwargs', nargs='*', action=ParseKwargs, default={})
@@ -51,7 +55,9 @@ def main():
     parser.add_argument('--uniform_over_groups', type=parse_bool, const=True, nargs='?')
     parser.add_argument('--distinct_groups', type=parse_bool, const=True, nargs='?')
     parser.add_argument('--n_groups_per_batch', type=int)
+    parser.add_argument('--unlabeled_n_groups_per_batch', type=int)
     parser.add_argument('--batch_size', type=int)
+    parser.add_argument('--unlabeled_batch_size', type=int)
     parser.add_argument('--eval_loader', choices=['standard'], default='standard')
 
     # Active Learning
@@ -76,6 +82,9 @@ def main():
     parser.add_argument('--target_resolution', nargs='+', type=int, help='The input resolution that images will be resized to before being passed into the model. For example, use --target_resolution 224 224 for a standard ResNet.')
     parser.add_argument('--resize_scale', type=float)
     parser.add_argument('--max_token_length', type=int)
+    parser.add_argument('--randaugment_n', type=int, help='N parameter of RandAugment - the number of transformations to apply.')
+    parser.add_argument('--randaugment_m', type=int,
+        help='M parameter of RandAugment - the magnitude of the transformation. Values range from 1 to 10, where 10 indicates the maximum scale for a transformation.')
 
     # Objective
     parser.add_argument('--loss_function', choices = supported.losses)
@@ -90,6 +99,8 @@ def main():
     parser.add_argument('--metalearning_k', type=int)
     parser.add_argument('--metalearning_adapt_lr', type=float)
     parser.add_argument('--metalearning_kwargs', nargs='*', action=ParseKwargs, default={})
+    parser.add_argument('--self_training_lambda', type=float)
+    parser.add_argument('--self_training_threshold', type=float)
     parser.add_argument('--algo_log_metric')
 
     # Model selection

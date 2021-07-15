@@ -1,6 +1,5 @@
 import torch.nn as nn
 import copy
-from algorithms.initializer import initialize_algorithm
 
 def initialize_few_shot_algorithm(config, algorithm):
     """

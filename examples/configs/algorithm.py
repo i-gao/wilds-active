@@ -47,4 +47,20 @@ algorithm_defaults = {
             'n_groups_task': 1
         }
     },
+    'fixmatch': {
+        'train_loader': 'standard',
+        'uniform_over_groups': False,
+        'eval_loader': 'standard',
+        'self_training_lambda': 1,
+        'self_training_threshold': 0.7,
+        'randaugment_n': 2,
+        'randaugment_m': 10,
+    },
+    'pseudolabel': {
+        'train_loader': 'standard',
+        'uniform_over_groups': False,
+        'eval_loader': 'standard',
+        'self_training_lambda': 1,
+        'self_training_threshold': 0.7,
+    },
 }
