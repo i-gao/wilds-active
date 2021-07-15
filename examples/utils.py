@@ -216,6 +216,7 @@ def configure_split_dict(split, data, split_name, train, verbose, grouper, confi
             data=data,
             train=train,
             grouper=grouper,
+            batch_size=config.batch_size,
             config=config)
 
     # Set fields
@@ -231,7 +232,7 @@ def configure_split_dict(split, data, split_name, train, verbose, grouper, confi
     return split_dict
 
 
-def configure_loaders(split_dict, data, config, train=False, grouper=None):
+def configure_loaders(split_dict, data, batch_size, config, train=False, grouper=None):
     """
     modifies split_dict ['dataset'] and ['loader'] keys in place
     Args:
@@ -244,7 +245,7 @@ def configure_loaders(split_dict, data, config, train=False, grouper=None):
         split_dict['loader'] = get_train_loader(
             loader=config.train_loader,
             dataset=split_dict['dataset'],
-            batch_size=config.batch_size,
+            batch_size=batch_size,
             uniform_over_groups=config.uniform_over_groups,
             grouper=grouper,
             distinct_groups=config.distinct_groups,
@@ -255,7 +256,7 @@ def configure_loaders(split_dict, data, config, train=False, grouper=None):
             loader=config.eval_loader,
             dataset=split_dict['dataset'],
             grouper=grouper,
-            batch_size=config.batch_size,
+            batch_size=batch_size,
             **config.loader_kwargs)
 
 def save_pred(y_pred, csv_path):

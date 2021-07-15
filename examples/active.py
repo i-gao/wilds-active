@@ -149,18 +149,21 @@ def run_active_learning(selection_fn, few_shot_algorithm, datasets, general_logg
             data=labeled_dataset,
             train=True,
             grouper=grouper,
+            batch_size=config.batch_size,
             config=config)
         configure_loaders(
             split_dict=datasets['unlabeled_test_shuffled'],
             data=label_manager.get_unlabeled_subset(train=True),
             train=True,
             grouper=grouper,
+            batch_size=config.unlabeled_batch_size, # special batch size
             config=config)
         configure_loaders(
             split_dict=datasets['unlabeled_test'],
             data=label_manager.get_unlabeled_subset(),
             train=False,
             grouper=None,
+            batch_size=config.batch_size,
             config=config)
 
         # Then few-shot train on the new labels
