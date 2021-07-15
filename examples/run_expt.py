@@ -190,6 +190,13 @@ def main():
         config=config,
         dataset=full_dataset)
 
+    if config.algorithm == "fixmatch":
+        # For FixMatch, we need our loader to return batches in the form ((x_weak, x_strong), m)
+        # We do this by initializing a special transform function
+        unlabeled_train_transform = initialize_transform(
+            config.train_transform, config, full_dataset, additional_transform_name="fixmatch"
+        )
+
     train_grouper = CombinatorialGrouper(
         dataset=full_dataset,
         groupby_fields=config.groupby_fields)
@@ -221,7 +228,13 @@ def main():
             config=config)
  
         if 'test' in split and config.active_learning:
-            datasets[split]['label_manager'] = LabelManager(datasets[split]['dataset'])
+            # Perform active learning on the standard test split
+            datasets[split]['label_manager'] = LabelManager(
+                datasets[split]['dataset'],
+                train_transform,
+                eval_transform,
+                unlabeled_train_transform=unlabeled_train_transform
+            )
 
     if config.use_wandb:
         initialize_wandb(config)

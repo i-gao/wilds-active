@@ -162,10 +162,9 @@ class UncertaintySampling(SelectionFunction):
     def select(self, label_manager, K_per_group, unlabeled_indices, groups, group_ids):
         self.uncertainty_model.eval()
         # Get loader for estimating uncertainties
-        unlabeled_test = label_manager.get_unlabeled_subset()
         loader = get_eval_loader(
             loader='standard',
-            dataset=unlabeled_test,
+            dataset=label_manager.get_unlabeled_subset(), # TODO: should this be augmented or unaugmented examples?
             batch_size=self.config.batch_size,
             **self.config.loader_kwargs)
 

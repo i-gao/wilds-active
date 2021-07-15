@@ -52,7 +52,8 @@ class FixMatch(SingleModelAlgorithm):
         """
         Args:
             - labeled_batch: examples (x, y, m) where x is weakly augmented
-            - unlabeled_batch: examples ((x_weak, x_strong), m) where x_weak is weakly augmented but x_strong is strongly augmented
+            - unlabeled_batch: examples ((x_weak, x_strong), y, m) where x_weak is weakly augmented but x_strong is strongly augmented
+                because this is test data, we actually have a y, but ignore it
         Returns: results, a dict containing keys:
             - 'g': groups for the labeled batch
             - 'y_true': true labels for the labeled batch
@@ -80,7 +81,7 @@ class FixMatch(SingleModelAlgorithm):
         }
         # Unlabeled examples
         if unlabeled_batch is not None:
-            x, metadata = unlabeled_batch
+            x, _, metadata = unlabeled_batch
             x_weak, x_strong = x
             x_weak = x_weak.to(self.device)
             x_strong = x_strong.to(self.device)

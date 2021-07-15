@@ -94,14 +94,14 @@ def run_epoch(algorithm, dataset, general_logger, epoch, config, train, unlabele
     batches = (
         zip(dataset['loader'], unlabeled_dataset['loader']) if unlabeled_dataset
         else dataset['loader']
-    )
+    ) # TODO: since we're working w/ very small labeled batch sizes, I think this skips a lot of the unlabeled dataset.
     if config.progress_bar:
         batches = tqdm(batches)
 
     # Using enumerate(iterator) can sometimes leak memory in some environments (!)
     # so we manually increment batch_idx
     batch_idx = 0
-    for batch in iterator:
+    for batch in batches:
         if train:
             if unlabeled_dataset:
                 labeled_batch, unlabeled_batch = batch

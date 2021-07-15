@@ -10,19 +10,28 @@ class LabelManager:
     labels and index these examples separately.
     Args:
         - subset: subset to hide/reveal labels for
+        - train_transform: transform to apply to labeled examples (and unlabeled examples if subset is called with train=True)
+        - eval_transform: transform to apply to unlabeled examples (if subset is called with train=False)
+        - unlabeled_train_transform: transform to apply to unlabeled examples (if subset is called with train=True); overwrites 
+            default train_transform. This is helpful for FixMatch.
     """
-    def __init__(self, subset: WILDSSubset, verbose=True):
+    def __init__(self, subset: WILDSSubset, train_transform, eval_transform, verbose=True, unlabeled_train_transform=None):
         self.dataset = subset.dataset
-        self.transform = subset.transform
+        self.labeled_train_transform = train_transform
+        self.unlabeled_train_transform = unlabeled_train_transform if unlabeled_train_transform is not None else labeled_train_transform
+        self.eval_transform = eval_transform
         self._idx = set(subset.indices)
         self._idx_labels_revealed = set()
         self.verbose = verbose
 
-    def get_unlabeled_subset(self):
-        return WILDSSubset(self.dataset, self.unlabeled_indices, self.transform)
+    def get_unlabeled_subset(self, train=False):
+        if train:
+            return WILDSSubset(self.dataset, self.unlabeled_indices, self.unlabeled_train_transform)
+        else:
+            return WILDSSubset(self.dataset, self.unlabeled_indices, self.eval_transform)
 
     def get_labeled_subset(self):
-        return WILDSSubset(self.dataset, self.labeled_indices, self.transform)
+        return WILDSSubset(self.dataset, self.labeled_indices, self.labeled_train_transform)
 
     def reveal_labels(self, idx: [int]):
         """Remembers these examples as having labels revealed, 
@@ -89,6 +98,14 @@ def run_active_learning(selection_fn, few_shot_algorithm, datasets, general_logg
         verbose=True,
         grouper=grouper,
         config=config)
+    datasets['unlabeled_test_shuffled'] = configure_split_dict(
+        data = None,
+        split="unlabeled_test_shuffled",
+        split_name="unlabeled_test_shuffled",
+        train=False,
+        grouper=None,
+        verbose=True,
+        config=config)
     datasets['unlabeled_test'] = configure_split_dict(
         data = None,
         split="unlabeled_test",
@@ -134,6 +151,12 @@ def run_active_learning(selection_fn, few_shot_algorithm, datasets, general_logg
             grouper=grouper,
             config=config)
         configure_loaders(
+            split_dict=datasets['unlabeled_test_shuffled'],
+            data=label_manager.get_unlabeled_subset(train=True),
+            train=True,
+            grouper=grouper,
+            config=config)
+        configure_loaders(
             split_dict=datasets['unlabeled_test'],
             data=label_manager.get_unlabeled_subset(),
             train=False,
@@ -146,7 +169,7 @@ def run_active_learning(selection_fn, few_shot_algorithm, datasets, general_logg
             datasets=datasets,
             train_split=labeled_split_name,
             val_split=None,
-            unlabeled_split="unlabeled_test",
+            unlabeled_split="unlabeled_test_shuffled",
             general_logger=general_logger,
             config=config,
             rnd=rnd,
