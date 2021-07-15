@@ -140,8 +140,8 @@ class RandomSampling(SelectionFunction):
     def select(self, label_manager, K_per_group, unlabeled_indices, groups, group_ids):
         reveal = []
         for i, K in enumerate(K_per_group):
-            K = min(K, sum(groups == g).int().item())
             g = group_ids[i]
+            K = min(K, sum(groups == g).int().item())
             reveal_g = np.random.choice(
                 unlabeled_indices[groups == g],
                 replace=False, # assuming this is large enough
