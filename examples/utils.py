@@ -102,6 +102,15 @@ def save_model(algorithm, epoch, best_val_metric, path):
     state['best_val_metric'] = best_val_metric
     torch.save(state, path)
 
+def freeze_features(algorithm):
+    """Freezes all params except the last layer"""
+    *_, last = algorithm.modules()
+    for param in algorithm.model.parameters():
+        param.requires_grad = False
+    for param in last.parameters():
+        param.requires_grad = True
+    print(f"\nNumber of unfrozen parameters: {len(list(filter(lambda p: p.requires_grad, algorithm.parameters())))}")
+
 def load(module, path, device=None, tries=2):
     """Handles loading weights saved from this repo/model into an algorithm/model."""
     if device is not None:

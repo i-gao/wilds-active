@@ -11,23 +11,20 @@ from tqdm import tqdm
 import os
 from shutil import copyfile
 
-def initialize_selection_function(config, orig_algorithm, few_shot_algorithm, select_grouper, algo_grouper=None):
+def initialize_selection_function(config, algorithm, select_grouper, algo_grouper=None):
     # initialize selection function to choose target examples to label
     if config.selection_function=='random':
         selection_fn = RandomSampling(select_grouper, config)
     elif config.selection_function=='uncertainty':
-        if config.few_shot_kwargs.get('reset_classifier'): 
-            import warnings
-            warnings.warn("Running uncertainty sampling using a randomly initialized logits layer.")
-        selection_fn = UncertaintySampling(few_shot_algorithm, select_grouper, config)
+        selection_fn = UncertaintySampling(algorithm, select_grouper, config)
     elif config.selection_function=='uncertainty_fixed':
-        selection_fn = UncertaintySampling(orig_algorithm, select_grouper, config)
+        selection_fn = UncertaintySampling(copy.deepcopy(algorithm), select_grouper, config)
     elif config.selection_function=='highest_loss':
-        selection_fn = HighestLoss(few_shot_algorithm, select_grouper, config)
+        selection_fn = HighestLoss(algorithm, select_grouper, config)
     elif config.selection_function=='confidently_incorrect':
-        selection_fn = ConfidentlyIncorrect(few_shot_algorithm, select_grouper, config)
+        selection_fn = ConfidentlyIncorrect(algorithm, select_grouper, config)
     elif config.selection_function=='approximate_lookahead':
-        selection_fn = ApproximateLookahead(few_shot_algorithm, algo_grouper, select_grouper, config)
+        selection_fn = ApproximateLookahead(algorithm, algo_grouper, select_grouper, config)
     else:
         raise ValueError(f'Selection Function {config.selection_function} not recognized.')
 

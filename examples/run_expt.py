@@ -15,12 +15,11 @@ import wilds
 from wilds.common.data_loaders import get_train_loader, get_eval_loader
 from wilds.common.grouper import CombinatorialGrouper
 
-from utils import set_seed, Logger, log_config, ParseKwargs, load, log_group_data, parse_bool, get_model_prefix, configure_split_dict, WILDSPseudolabeledSubset
+from utils import set_seed, Logger, log_config, ParseKwargs, load, log_group_data, parse_bool, get_model_prefix, configure_split_dict, WILDSPseudolabeledSubset, freeze_features
 from train import train, evaluate, infer_predictions
 from algorithms.initializer import initialize_algorithm, infer_d_out
 from active import run_active_learning, LabelManager
 from selection_fn import initialize_selection_function
-from few_shot import initialize_few_shot_algorithm
 from models.initializer import initialize_model
 from transforms import initialize_transform
 from configs.utils import populate_defaults
@@ -59,20 +58,19 @@ def main():
 
     # Active Learning
     parser.add_argument('--active_learning', type=parse_bool, const=True, nargs='?')
-    parser.add_argument('--unlabeled_split', default="test", type=str, help='Split to use as unlabeled data')
+    parser.add_argument('--target_split', default="test", type=str, help='Split from which to sample labeled examples and use as unlabeled data for self-training.')
+    parser.add_argument('--concat_source_labeled', type=parse_bool, const=True, nargs='?', default=False, help="Concatenate labeled source examples to labeled target examples.")
     parser.add_argument('--selection_function', choices=supported.selection_functions)
     parser.add_argument('--selection_function_kwargs', nargs='*', action=ParseKwargs, default={}, help="keyword arguments for selection fn passed as key1=value1 key2=value2")
     parser.add_argument('--n_rounds', type=int, default=1, help="number of times to repeat the selection-train cycle")
     parser.add_argument('--selectby_fields', nargs='+', help="If set, acts like a grouper and n_shots are acquired per selection group (e.g. y x hospital selects K examples per y x hospital).")
     parser.add_argument('--n_shots', type=int, help="number of shots (labels) to actively acquire each round")
-    parser.add_argument('--few_shot_algorithm', choices=supported.few_shot_algorithms)
-    parser.add_argument('--few_shot_kwargs', nargs='*', action=ParseKwargs, default={},
-        help='keyword arguments for few shot algorithm initialization passed as key1=value1 key2=value2')
-
+    
     # Model
     parser.add_argument('--model', choices=supported.models)
     parser.add_argument('--model_kwargs', nargs='*', action=ParseKwargs, default={},
         help='keyword arguments for model initialization passed as key1=value1 key2=value2')
+    parser.add_argument('--freeze_featurizer', type=parse_bool, const=True, nargs='?', help="Only train classifier weights")
     parser.add_argument('--teacher_model_path', type=str, help='Path to teacher model weights. If this is defined, pseudolabels will first be computed for unlabeled data before anything else runs.')
     parser.add_argument('--dropout_rate', type=float)
 
@@ -239,7 +237,7 @@ def main():
             grouper=train_grouper,
             config=config)
  
-        if config.unlabeled_split == split and config.active_learning:
+        if config.target_split == split and config.active_learning:
             # Perform active learning on the specified split
             datasets[split]['label_manager'] = LabelManager(
                 datasets[split]['dataset'],
@@ -256,10 +254,10 @@ def main():
         teacher_model = initialize_model(config, d_out).to(config.device)
         load(teacher_model, config.teacher_model_path, device=config.device)
         # Infer teacher outputs on unlabeled examples in sequential order
-        unlabeled_split_dataset = datasets[config.unlabeled_split]['dataset']
+        target_split_dataset = datasets[config.target_split]['dataset']
         sequential_loader = get_eval_loader(
             loader=config.eval_loader,
-            dataset=unlabeled_split_dataset,
+            dataset=target_split_dataset,
             grouper=train_grouper,
             batch_size=config.unlabeled_batch_size,
             **config.loader_kwargs
@@ -267,14 +265,14 @@ def main():
         teacher_outputs = infer_predictions(teacher_model, sequential_loader, config)
         teacher_model = teacher_model.to(torch.device("cpu"))
         data = WILDSPseudolabeledSubset( # TODO
-            reference_subset=unlabeled_split_dataset,
+            reference_subset=target_split_dataset,
             pseudolabels=teacher_outputs, 
             transform=unlabeled_train_transform
         )
-        datasets[f'pseudolabeled_{config.unlabeled_split}'] = configure_split_dict(
+        datasets[f'pseudolabeled_{config.target_split}'] = configure_split_dict(
             data=data,
-            split=f'pseudolabeled_{config.unlabeled_split}',
-            split_name=f'Pseudolabeled {full_dataset.split_names[config.unlabeled_split]}',
+            split=f'pseudolabeled_{config.target_split}',
+            split_name=f'Pseudolabeled {full_dataset.split_names[config.target_split]}',
             train=True,
             verbose=verbose,
             grouper=train_grouper,
@@ -342,14 +340,14 @@ def main():
             best_val_metric=None
 
         if config.active_learning:
-            few_shot_algorithm = initialize_few_shot_algorithm(config, algorithm)
+            if config.freeze_featurizer: freeze_features(algorithm)
             select_grouper = CombinatorialGrouper(
                 dataset=full_dataset,
                 groupby_fields=config.selectby_fields)
-            selection_fn = initialize_selection_function(config, algorithm, few_shot_algorithm, select_grouper, algo_grouper=train_grouper)
+            selection_fn = initialize_selection_function(config, algorithm, select_grouper, algo_grouper=train_grouper)
             run_active_learning(
                 selection_fn=selection_fn,
-                few_shot_algorithm=few_shot_algorithm,
+                algorithm=algorithm,
                 datasets=datasets,
                 general_logger=logger,
                 grouper=train_grouper,

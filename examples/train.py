@@ -188,7 +188,7 @@ def train(algorithm, datasets, general_logger, config, epoch_offset, best_val_me
         # Then run everything else
         if config.evaluate_all_splits:
             additional_splits = [
-                split for split in datasets.keys() if split not in ['train','val',f'labeled_{config.unlabeled_split}',f'unlabeled_{config.unlabeled_split}_shuffled']
+                split for split in datasets.keys() if split not in ['train','val',f'labeled_{config.target_split}',f'unlabeled_{config.target_split}_shuffled']
             ]
         else:
             additional_splits = config.eval_splits

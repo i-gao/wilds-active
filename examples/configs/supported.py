@@ -41,4 +41,3 @@ selection_functions = [
     'random', 'uncertainty', 'uncertainty_fixed', 
     'highest_loss', 'confidently_incorrect', 'approximate_lookahead'
 ]
-few_shot_algorithms = ['finetune', 'linear_probe']
