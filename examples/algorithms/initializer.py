@@ -8,6 +8,7 @@ from algorithms.IRM import IRM
 from algorithms.metalearning import MAML, ANIL
 from algorithms.fixmatch import FixMatch
 from algorithms.pseudolabel import PseudoLabel
+from algorithms.noisy_student import NoisyStudent
 from configs.supported import algo_log_metrics, losses
 
 def initialize_algorithm(config, datasets, train_grouper, unlabeled_dataset=None):
@@ -71,7 +72,7 @@ def initialize_algorithm(config, datasets, train_grouper, unlabeled_dataset=None
             loss=loss,
             metric=metric,
             n_train_steps=n_train_steps)
-    elif config.algorithm == 'fixmatch': # TODO: ensure that this won't run unless it's as active learning
+    elif config.algorithm == 'FixMatch': # TODO: ensure that this won't run unless it's as active learning
         algorithm = FixMatch(
             config=config,
             d_out=d_out,
@@ -79,12 +80,23 @@ def initialize_algorithm(config, datasets, train_grouper, unlabeled_dataset=None
             loss=loss,
             metric=metric,
             n_train_steps=n_train_steps)
-    elif config.algorithm == 'pseudolabel':
+    elif config.algorithm == 'PseudoLabel':
         algorithm = PseudoLabel(
             config=config,
             d_out=d_out,
             grouper=train_grouper,
             loss=loss,
+            metric=metric,
+            n_train_steps=n_train_steps)
+    elif config.algorithm=='NoisyStudent':
+        if config.soft_pseudolabels: unlabeled_loss = losses["cross_entropy_logits"]
+        else: unlabeled_loss = losses[config.loss_function]
+        algorithm = NoisyStudent(
+            config=config,
+            d_out=d_out,
+            grouper=train_grouper,
+            loss=loss,
+            unlabeled_loss=unlabeled_loss,
             metric=metric,
             n_train_steps=n_train_steps)
     else:

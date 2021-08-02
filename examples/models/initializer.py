@@ -7,6 +7,7 @@ from models.layers import Identity
 from models.gnn import GINVirtual
 from models.code_gpt import GPT2LMHeadLogit, GPT2FeaturizerLMHeadLogit
 from transformers import GPT2Tokenizer
+from efficientnet_pytorch import EfficientNet
 
 def initialize_model(config, d_out, is_featurizer=False):
     """
@@ -23,7 +24,7 @@ def initialize_model(config, d_out, is_featurizer=False):
             If is_featurizer=False:
             - model: a model that is equivalent to nn.Sequential(featurizer, classifier)
     """
-    if config.model in ('resnet50', 'resnet34', 'wideresnet50', 'densenet121'):
+    if config.model in ('resnet34', 'resnet50', 'resnet101', 'wideresnet50', 'densenet121'):
         if is_featurizer:
             featurizer = initialize_torchvision_model(
                 name=config.model,
@@ -36,6 +37,13 @@ def initialize_model(config, d_out, is_featurizer=False):
                 name=config.model,
                 d_out=d_out,
                 **config.model_kwargs)
+    elif 'efficientnet' in config.model:
+        if is_featurizer:
+            featurizer = initialize_efficientnet_model(config, d_out, is_featurizer)
+            classifier = nn.Linear(featurizer.d_out, d_out)
+            model = (featurizer, classifier)
+        else:
+            model = initialize_efficientnet_model(config, d_out)
     elif 'bert' in config.model:
         if is_featurizer:
             featurizer = initialize_bert_based_model(config, d_out, is_featurizer)
@@ -105,7 +113,7 @@ def initialize_torchvision_model(name, d_out, **kwargs):
     elif name == 'densenet121':
         constructor_name = name
         last_layer_name = 'classifier'
-    elif name in ('resnet50', 'resnet34'):
+    elif name in ('resnet34', 'resnet50', 'resnet101'):
         constructor_name = name
         last_layer_name = 'fc'
     else:
@@ -122,4 +130,13 @@ def initialize_torchvision_model(name, d_out, **kwargs):
         last_layer = nn.Linear(d_features, d_out)
         model.d_out = d_out
     setattr(model, last_layer_name, last_layer)
+    return model
+
+def initialize_efficientnet_model(config, d_out, is_featurizer=False):
+    model = EfficientNet.from_pretrained(config.model, num_classes=d_out)
+    if is_featurizer: # want a featurizer, so set _fc layer to identity
+        d_features = getattr(model, '_fc').in_features
+        last_layer = Identity(d_features)
+        model.d_out = d_features
+        setattr(model, '_fc', last_layer)
     return model

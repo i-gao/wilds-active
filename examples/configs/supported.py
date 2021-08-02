@@ -5,9 +5,11 @@ import sys, os
 # metrics
 from wilds.common.metrics.loss import ElementwiseLoss, Loss, MultiTaskLoss
 from wilds.common.metrics.all_metrics import Accuracy, MultiTaskAccuracy, MSE, multiclass_logits_to_pred, binary_logits_to_pred
+from utils import cross_entropy_with_logits_loss
 
 losses = {
     'cross_entropy': ElementwiseLoss(loss_fn=nn.CrossEntropyLoss(reduction='none')),
+    'cross_entropy_logits': ElementwiseLoss(loss_fn=cross_entropy_with_logits_loss),
     'lm_cross_entropy': MultiTaskLoss(loss_fn=nn.CrossEntropyLoss(reduction='none')),
     'mse': MSE(name='loss'),
     'multitask_bce': MultiTaskLoss(loss_fn=nn.BCEWithLogitsLoss(reduction='none')),
@@ -32,7 +34,7 @@ transforms = ['bert', 'image_base', 'image_resize_and_center_crop', 'poverty_tra
 models = ['resnet18_ms', 'resnet50', 'resnet34', 'wideresnet50',
          'densenet121', 'bert-base-uncased', 'distilbert-base-uncased',
          'gin-virtual', 'logistic_regression', 'code-gpt-py']
-algorithms = ['ERM', 'groupDRO', 'deepCORAL', 'IRM', 'MAML', 'ANIL', 'fixmatch', 'pseudolabel']
+algorithms = ['ERM', 'groupDRO', 'deepCORAL', 'IRM', 'MAML', 'ANIL', 'FixMatch', 'PseudoLabel', 'NoisyStudent']
 optimizers = ['SGD', 'Adam', 'AdamW']
 schedulers = ['linear_schedule_with_warmup', 'ReduceLROnPlateau', 'StepLR']
 selection_functions = [

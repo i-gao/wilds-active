@@ -15,12 +15,13 @@ import wilds
 from wilds.common.data_loaders import get_train_loader, get_eval_loader
 from wilds.common.grouper import CombinatorialGrouper
 
-from utils import set_seed, Logger, log_config, ParseKwargs, load, log_group_data, parse_bool, get_model_prefix, configure_split_dict
-from train import train, evaluate
-from algorithms.initializer import initialize_algorithm
+from utils import set_seed, Logger, log_config, ParseKwargs, load, log_group_data, parse_bool, get_model_prefix, configure_split_dict, WILDSPseudolabeledSubset
+from train import train, evaluate, infer_predictions
+from algorithms.initializer import initialize_algorithm, infer_d_out
 from active import run_active_learning, LabelManager
 from selection_fn import initialize_selection_function
 from few_shot import initialize_few_shot_algorithm
+from models.initializer import initialize_model
 from transforms import initialize_transform
 from configs.utils import populate_defaults
 import configs.supported as supported
@@ -45,10 +46,6 @@ def main():
                         help='Convenience parameter that scales all dataset splits down to the specified fraction, for development purposes. Note that this also scales the test set down, so the reported numbers are not comparable with the full test set.')
     parser.add_argument('--version', default=None, type=str)
 
-    # Unlabeled Dataset
-    parser.add_argument('--unlabeled_split', default=None, type=str, help='Unlabeled split to use')
-    parser.add_argument('--unlabeled_version', default=None, type=str)
-
     # Loaders
     parser.add_argument('--loader_kwargs', nargs='*', action=ParseKwargs, default={})
     parser.add_argument('--train_loader', choices=['standard', 'group'])
@@ -62,6 +59,7 @@ def main():
 
     # Active Learning
     parser.add_argument('--active_learning', type=parse_bool, const=True, nargs='?')
+    parser.add_argument('--unlabeled_split', default="test", type=str, help='Split to use as unlabeled data')
     parser.add_argument('--selection_function', choices=supported.selection_functions)
     parser.add_argument('--selection_function_kwargs', nargs='*', action=ParseKwargs, default={}, help="keyword arguments for selection fn passed as key1=value1 key2=value2")
     parser.add_argument('--n_rounds', type=int, default=1, help="number of times to repeat the selection-train cycle")
@@ -75,6 +73,9 @@ def main():
     parser.add_argument('--model', choices=supported.models)
     parser.add_argument('--model_kwargs', nargs='*', action=ParseKwargs, default={},
         help='keyword arguments for model initialization passed as key1=value1 key2=value2')
+    parser.add_argument('--teacher_model_path', type=str, help='Path to teacher model weights. If this is defined, pseudolabels will first be computed for unlabeled data before anything else runs.')
+    parser.add_argument('--dropout_rate', type=float)
+
 
     # Transforms
     parser.add_argument('--train_transform', choices=supported.transforms)
@@ -93,6 +94,8 @@ def main():
     parser.add_argument('--groupby_fields', nargs='+')
     parser.add_argument('--group_dro_step_size', type=float)
     parser.add_argument('--coral_penalty_weight', type=float)
+    parser.add_argument('--fixmatch_classifier_lr', type=float)
+    parser.add_argument('--fixmatch_featurizer_lr', type=float)
     parser.add_argument('--irm_lambda', type=float)
     parser.add_argument('--irm_penalty_anneal_iters', type=int)
     parser.add_argument('--maml_first_order', type=parse_bool, const=True, nargs='?')
@@ -101,6 +104,7 @@ def main():
     parser.add_argument('--metalearning_kwargs', nargs='*', action=ParseKwargs, default={})
     parser.add_argument('--self_training_lambda', type=float)
     parser.add_argument('--self_training_threshold', type=float)
+    parser.add_argument('--soft_pseudolabels', default=False, type=parse_bool, const=True, nargs='?')
     parser.add_argument('--algo_log_metric')
 
     # Model selection
@@ -123,8 +127,8 @@ def main():
 
     # Evaluation
     parser.add_argument('--process_outputs_function', choices = supported.process_outputs_functions)
-    parser.add_argument('--evaluate_all_splits', type=parse_bool, const=True, nargs='?', default=True)
-    parser.add_argument('--eval_splits', nargs='+', default=[])
+    parser.add_argument('--evaluate_all_splits', type=parse_bool, const=True, nargs='?', default=False)
+    parser.add_argument('--eval_splits', nargs='+', default=['val', 'test'])
     parser.add_argument('--eval_only', type=parse_bool, const=True, nargs='?', default=False)
     parser.add_argument('--eval_epoch', default=None, type=int, help='If eval_only is set, then eval_epoch allows you to specify evaluating at a particular epoch. By default, it evaluates the best epoch by validation performance.')
     parser.add_argument('--eval_additional_every', default=1, type=int, help='Eval additional splits every _ epochs.')
@@ -184,18 +188,26 @@ def main():
     train_transform = initialize_transform(
         transform_name=config.train_transform,
         config=config,
-        dataset=full_dataset)
+        dataset=full_dataset,
+        additional_transform_name=("noisy_student" if config.algorithm == "NoisyStudent" else None)
+    )
     eval_transform = initialize_transform(
         transform_name=config.eval_transform,
         config=config,
         dataset=full_dataset)
 
-    if config.algorithm == "fixmatch":
+    unlabeled_train_transform = None
+    if config.algorithm == "FixMatch":
         # For FixMatch, we need our loader to return batches in the form ((x_weak, x_strong), m)
         # We do this by initializing a special transform function
         unlabeled_train_transform = initialize_transform(
             config.train_transform, config, full_dataset, additional_transform_name="fixmatch"
         )
+    elif config.algorithm == "NoisyStudent":
+        # For NoisyStudent, we need our loader to apply a strong augmentation to examples
+        unlabeled_train_transform = initialize_transform(
+            config.train_transform, config, full_dataset, additional_transform_name="noisy_student"
+        )    
 
     train_grouper = CombinatorialGrouper(
         dataset=full_dataset,
@@ -227,14 +239,46 @@ def main():
             grouper=train_grouper,
             config=config)
  
-        if 'test' in split and config.active_learning:
-            # Perform active learning on the standard test split
+        if config.unlabeled_split == split and config.active_learning:
+            # Perform active learning on the specified split
             datasets[split]['label_manager'] = LabelManager(
                 datasets[split]['dataset'],
                 train_transform,
                 eval_transform,
                 unlabeled_train_transform=unlabeled_train_transform
             )
+
+    if config.algorithm == "NoisyStudent": 
+        # For Noisy Student, add a pseudolabeled split
+        print("Inferring teacher pseudolabels for Noisy Student")
+        assert config.teacher_model_path is not None
+        d_out = infer_d_out(full_dataset)
+        teacher_model = initialize_model(config, d_out).to(config.device)
+        load(teacher_model, config.teacher_model_path, device=config.device)
+        # Infer teacher outputs on unlabeled examples in sequential order
+        unlabeled_split_dataset = datasets[config.unlabeled_split]['dataset']
+        sequential_loader = get_eval_loader(
+            loader=config.eval_loader,
+            dataset=unlabeled_split_dataset,
+            grouper=train_grouper,
+            batch_size=config.unlabeled_batch_size,
+            **config.loader_kwargs
+        )
+        teacher_outputs = infer_predictions(teacher_model, sequential_loader, config)
+        teacher_model = teacher_model.to(torch.device("cpu"))
+        data = WILDSPseudolabeledSubset( # TODO
+            reference_subset=unlabeled_split_dataset,
+            pseudolabels=teacher_outputs, 
+            transform=unlabeled_train_transform
+        )
+        datasets[f'pseudolabeled_{config.unlabeled_split}'] = configure_split_dict(
+            data=data,
+            split=f'pseudolabeled_{config.unlabeled_split}',
+            split_name=f'Pseudolabeled {full_dataset.split_names[config.unlabeled_split]}',
+            train=True,
+            verbose=verbose,
+            grouper=train_grouper,
+            config=config)
 
     if config.use_wandb:
         initialize_wandb(config)

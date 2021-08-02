@@ -47,20 +47,28 @@ algorithm_defaults = {
             'n_groups_task': 1
         }
     },
-    'fixmatch': {
+    'FixMatch': {
         'train_loader': 'standard',
         'uniform_over_groups': False,
         'eval_loader': 'standard',
         'self_training_lambda': 1,
         'self_training_threshold': 0.7,
+        'scheduler': 'FixMatchLR',
+        'scheduler_kwargs': {},
         'randaugment_n': 2,
-        'randaugment_m': 10,
     },
-    'pseudolabel': {
+    'PseudoLabel': {
         'train_loader': 'standard',
         'uniform_over_groups': False,
         'eval_loader': 'standard',
         'self_training_lambda': 1,
         'self_training_threshold': 0.7,
     },
+    'NoisyStudent': {
+        'train_loader': 'standard',
+        'uniform_over_groups': False,
+        'eval_loader': 'standard',
+        'dropout_rate': 0.5,
+        'randaugment_n': 2,
+    }
 }

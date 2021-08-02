@@ -8,6 +8,7 @@ dataset_defaults = {
         'loss_function': 'cross_entropy',
         'algo_log_metric': 'accuracy',
         'batch_size': 8,
+        'unlabeled_batch_size': 8,
         'lr': 1e-5,
         'weight_decay': 0.01,
         'n_epochs': 3,
@@ -53,11 +54,8 @@ dataset_defaults = {
         'optimizer_kwargs': {'momentum': 0.9},
         'scheduler': None,
         'batch_size': 32,
+        'unlabeled_batch_size': 32,
         'lr': 0.001,
-        'metalearning_adapt_lr': 0.001, # same as outer lr
-        'metalearning_kwargs': {
-            'meta_batch_size': 3, # num train groups
-        },
         'weight_decay': 0.01,
         'n_epochs': 5,
         'n_groups_per_batch': 2,
@@ -96,9 +94,11 @@ dataset_defaults = {
         'val_metric': 'acc_wg',
         'val_metric_decreasing': False,
         'batch_size': 16,
+        'unlabeled_batch_size': 16,
         'lr': 1e-5,
         'weight_decay': 0.01,
         'n_epochs': 5,
+        'n_groups_per_batch': 1,
         'algo_log_metric': 'accuracy',
         'max_token_length': 300,
         'irm_lambda': 1.0,
@@ -112,9 +112,7 @@ dataset_defaults = {
     'fmow': {
         'split_scheme': 'official',
         'dataset_kwargs': {
-            'oracle_training_set': False,
-            'seed': 111,
-            'use_ood_val': True
+            'seed': 111
         },
         'model': 'densenet121',
         'model_kwargs': {'pretrained': True},
@@ -127,12 +125,9 @@ dataset_defaults = {
         'optimizer': 'Adam',
         'scheduler': 'StepLR',
         'scheduler_kwargs': {'gamma': 0.96},
-        'batch_size': 64,
+        'batch_size': 32,
+        'unlabeled_batch_size': 32,
         'lr': 0.0001,
-        'metalearning_adapt_lr': 0.0001, # same as outer lr
-        'metalearning_kwargs': {
-            'meta_batch_size': 12 # num train groups
-        },
         'weight_decay': 0.0,
         'n_epochs': 50,
         'n_groups_per_batch': 8,
@@ -152,12 +147,9 @@ dataset_defaults = {
         'algo_log_metric': 'accuracy',
         'model': 'resnet50',
         'lr': 3e-5,
-        'metalearning_adapt_lr': 3e-5, # same as outer lr
-        'metalearning_kwargs': {
-            'meta_batch_size': 243 # num train groups
-        },
         'weight_decay': 0.0,
         'batch_size': 16,
+        'unlabeled_batch_size': 16,
         'n_epochs': 12,
         'optimizer': 'Adam',
         'split_scheme': 'official',
@@ -179,6 +171,7 @@ dataset_defaults = {
         'val_metric_decreasing': False,
         'optimizer': 'Adam',
         'batch_size': 32,
+        'unlabeled_batch_size': 32,
         'lr': 1e-03,
         'weight_decay': 0.,
         'n_epochs': 100,
@@ -213,9 +206,7 @@ dataset_defaults = {
         'split_scheme': 'official',
         'dataset_kwargs': {
             'no_nl': False,
-            'fold': 'A',
-            'oracle_training_set': False,
-            'use_ood_val': True
+            'fold': 'A'
         },
         'model': 'resnet18_ms',
         'model_kwargs': {'num_channels': 8},
@@ -228,8 +219,9 @@ dataset_defaults = {
         'algo_log_metric': 'mse',
         'optimizer': 'Adam',
         'scheduler': 'StepLR',
-        'scheduler_kwargs': {'gamma':0.96},
+        'scheduler_kwargs': {'gamma': 0.96},
         'batch_size': 64,
+        'unlabeled_batch_size': 64,
         'lr': 0.001,
         'weight_decay': 0.0,
         'n_epochs': 200,

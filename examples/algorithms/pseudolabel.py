@@ -46,7 +46,7 @@ class PseudoLabel(SingleModelAlgorithm):
         """
         Args:
             - labeled_batch: examples (x, y, m) 
-            - unlabeled_batch: examples (x, y, m) -- because this is test data, we actually have a y, but ignore it
+            - unlabeled_batch: examples (x, m)
         Returns: results, a dict containing keys:
             - 'g': groups for the labeled batch
             - 'y_true': true labels for the labeled batch

@@ -18,7 +18,7 @@ class LabelManager:
     def __init__(self, subset: WILDSSubset, train_transform, eval_transform, verbose=True, unlabeled_train_transform=None):
         self.dataset = subset.dataset
         self.labeled_train_transform = train_transform
-        self.unlabeled_train_transform = unlabeled_train_transform if unlabeled_train_transform is not None else labeled_train_transform
+        self.unlabeled_train_transform = unlabeled_train_transform if unlabeled_train_transform is not None else train_transform
         self.eval_transform = eval_transform
         self._idx = set(subset.indices)
         self._idx_labels_revealed = set()
@@ -85,11 +85,11 @@ class LabelManager:
         return self.get_labeled_subset().y_array
         
 def run_active_learning(selection_fn, few_shot_algorithm, datasets, general_logger, grouper, config, full_dataset=None):
-    label_manager = datasets['test']['label_manager']
+    label_manager = datasets[config.unlabeled_split]['label_manager']
     joint_training = config.few_shot_kwargs.get('train_joint_source_target', False)
 
     # Add labeled test / unlabeled test splits.
-    labeled_split_name = "labeled_test_joint" if joint_training else "labeled_test"
+    labeled_split_name = f"labeled_{config.unlabeled_split}_joint" if joint_training else f"labeled_{config.unlabeled_split}"
     datasets[labeled_split_name] = configure_split_dict(
         data=None,
         split=labeled_split_name,
@@ -98,18 +98,18 @@ def run_active_learning(selection_fn, few_shot_algorithm, datasets, general_logg
         verbose=True,
         grouper=grouper,
         config=config)
-    datasets['unlabeled_test_shuffled'] = configure_split_dict(
+    datasets[f'unlabeled_{config.unlabeled_split}_shuffled'] = configure_split_dict(
         data = None,
-        split="unlabeled_test_shuffled",
-        split_name="unlabeled_test_shuffled",
+        split=f"unlabeled_{config.unlabeled_split}_shuffled",
+        split_name=f"unlabeled_{config.unlabeled_split}_shuffled",
         train=False,
         grouper=None,
         verbose=True,
         config=config)
-    datasets['unlabeled_test'] = configure_split_dict(
+    datasets[f'unlabeled_{config.unlabeled_split}'] = configure_split_dict(
         data = None,
-        split="unlabeled_test",
-        split_name="unlabeled_test",
+        split=f"unlabeled_{config.unlabeled_split}",
+        split_name=f"unlabeled_{config.unlabeled_split}",
         train=False,
         grouper=None,
         verbose=True,
@@ -119,9 +119,6 @@ def run_active_learning(selection_fn, few_shot_algorithm, datasets, general_logg
         general_logger.write('\nActive Learning Round [%d]:\n' % rnd)
         
         # First run selection function
-        ## Train selection function
-        # selection_fn.update()
-        ## Get a few labels
         selection_fn.select_and_reveal(label_manager=label_manager, K=config.n_shots)
         
         ## Refresh dataloaders
@@ -144,22 +141,22 @@ def run_active_learning(selection_fn, few_shot_algorithm, datasets, general_logg
         else:
             labeled_dataset = label_manager.get_labeled_subset()
 
-        configure_loaders(
+        configure_loaders( # labeled for training
             split_dict=datasets[labeled_split_name],
             data=labeled_dataset,
             train=True,
             grouper=grouper,
             batch_size=config.batch_size,
             config=config)
-        configure_loaders(
-            split_dict=datasets['unlabeled_test_shuffled'],
+        configure_loaders( # unlabeled for training
+            split_dict=datasets[f'unlabeled_{config.unlabeled_split}_shuffled'],
             data=label_manager.get_unlabeled_subset(train=True),
             train=True,
             grouper=grouper,
             batch_size=config.unlabeled_batch_size, # special batch size
             config=config)
-        configure_loaders(
-            split_dict=datasets['unlabeled_test'],
+        configure_loaders( # for eval
+            split_dict=datasets[f'unlabeled_{config.unlabeled_split}'],
             data=label_manager.get_unlabeled_subset(),
             train=False,
             grouper=None,
@@ -172,7 +169,7 @@ def run_active_learning(selection_fn, few_shot_algorithm, datasets, general_logg
             datasets=datasets,
             train_split=labeled_split_name,
             val_split=None,
-            unlabeled_split="unlabeled_test_shuffled",
+            unlabeled_split=f"unlabeled_{config.unlabeled_split}_shuffled",
             general_logger=general_logger,
             config=config,
             rnd=rnd,

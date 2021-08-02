@@ -187,7 +187,9 @@ def train(algorithm, datasets, general_logger, config, epoch_offset, best_val_me
        
         # Then run everything else
         if config.evaluate_all_splits:
-            additional_splits = [split for split in datasets.keys() if split not in ['train','val']]
+            additional_splits = [
+                split for split in datasets.keys() if split not in ['train','val',f'labeled_{config.unlabeled_split}',f'unlabeled_{config.unlabeled_split}_shuffled']
+            ]
         else:
             additional_splits = config.eval_splits
         if epoch % config.eval_additional_every == 0 or epoch+1 == config.n_epochs:
@@ -229,6 +231,27 @@ def evaluate(algorithm, datasets, epoch, general_logger, config):
         # Skip saving train preds, since the train loader generally shuffles the data
         if split != 'train':
             save_pred_if_needed(y_pred, dataset, epoch, config, is_best=False, force_save=True)
+
+def infer_predictions(model, loader, config):
+    """
+    Simple inference loop that performs inference using a model (not algorithm) and returns model outputs.
+    Compatible with both labeled and unlabeled WILDS datasets.
+    """
+    model.eval()
+    y_pred = []
+    iterator = tqdm(loader) if config.progress_bar else loader
+    for batch in iterator:
+        x = batch[0]
+        x = x.to(config.device)
+        with torch.no_grad(): 
+            output = model(x)
+            if not config.soft_pseudolabels and config.process_outputs_function is not None:
+                output = process_outputs_functions[config.process_outputs_function](output)
+            elif config.soft_pseudolabels:
+                output = torch.nn.functional.softmax(output, dim=1)
+        y_pred.append(output.clone().detach())
+    return torch.cat(y_pred, 0).to(torch.device('cpu'))
+
 
 def log_results(algorithm, dataset, general_logger, epoch, batch_idx):
     if algorithm.has_log:
