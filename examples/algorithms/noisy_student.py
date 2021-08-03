@@ -5,10 +5,8 @@ from models.initializer import initialize_model
 from algorithms.ERM import ERM
 from algorithms.single_model_algorithm import SingleModelAlgorithm
 from optimizer import initialize_optimizer_with_model_params
-from wilds.common.utils import split_into_groups
 from configs.supported import process_outputs_functions
-import copy
-from utils import load
+from utils import accuracy
 import re
 
 class DropoutModel(nn.Module):
@@ -72,6 +70,9 @@ class NoisyStudent(SingleModelAlgorithm):
         self.logged_fields.append("classification_loss")
         self.logged_fields.append("consistency_loss")
         self.logged_fields.append("pseudolabel_accuracy")
+        # used only for logging pseudolabel accuracy 
+        if config.process_outputs_function is not None:
+            self.process_outputs_function = process_outputs_functions[config.process_outputs_function]
         
     def process_batch(self, labeled_batch, unlabeled_batch=None):
         # Labeled examples
@@ -112,7 +113,7 @@ class NoisyStudent(SingleModelAlgorithm):
                 results['unlabeled_y_pseudo'], 
                 return_dict=False
             )
-            pseudolabel_accuracy = self.loss.compute(results['unlabeled_y_pseudo'], results['unlabeled_y_true']) 
+            pseudolabel_accuracy = accuracy(results['unlabeled_y_pseudo'], results['unlabeled_y_true'], self.process_outputs_function)
         else: 
             consistency_loss = 0
             pseudolabel_accuracy = 0

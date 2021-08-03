@@ -15,7 +15,7 @@ import wilds
 from wilds.common.data_loaders import get_train_loader, get_eval_loader
 from wilds.common.grouper import CombinatorialGrouper
 
-from utils import set_seed, Logger, log_config, ParseKwargs, load, log_group_data, parse_bool, get_model_prefix, configure_split_dict, WILDSPseudolabeledSubset, freeze_features
+from utils import set_seed, Logger, log_config, ParseKwargs, load, log_group_data, parse_bool, get_model_prefix, configure_split_dict, PseudolabeledSubset, freeze_features
 from train import train, evaluate, infer_predictions
 from algorithms.initializer import initialize_algorithm, infer_d_out
 from active import run_active_learning, LabelManager
@@ -172,6 +172,10 @@ def main():
     # Set random seed
     set_seed(config.seed)
 
+    # Algorithms that use unlabeled data must be run in active learning mode,
+    # because otherwise we have no unlabeled data.
+    if config.algorithm in ["PseudoLabel", "FixMatch", "NoisyStudent"]: assert config.active_learning
+
     # Data
     full_dataset = wilds.get_dataset(
         dataset=config.dataset,
@@ -193,20 +197,16 @@ def main():
         transform_name=config.eval_transform,
         config=config,
         dataset=full_dataset)
-
+        
+    # Define any special transforms for the algorithms that use unlabeled data
     unlabeled_train_transform = None
     if config.algorithm == "FixMatch":
-        # For FixMatch, we need our loader to return batches in the form ((x_weak, x_strong), m)
-        # We do this by initializing a special transform function
         unlabeled_train_transform = initialize_transform(
-            config.train_transform, config, full_dataset, additional_transform_name="fixmatch" # TODO not using
+            config.train_transform, config, full_dataset, additional_transform_name="fixmatch" # TODO test this out
         )
     elif config.algorithm == "NoisyStudent":
-        # For NoisyStudent, we need our loader to apply a strong augmentation to examples
-        unlabeled_train_transform = initialize_transform(
-            config.train_transform, config, full_dataset, additional_transform_name="noisy_student" # TODO not using
-        )    
-
+        unlabeled_train_transform = train_transform # NoisyStudent uses strong on BOTH labeled and unlabeled
+        
     train_grouper = CombinatorialGrouper(
         dataset=full_dataset,
         groupby_fields=config.groupby_fields)
@@ -222,33 +222,30 @@ def main():
         else:
             transform = eval_transform
             verbose = False
-
-        data = full_dataset.get_subset(
-            split,
-            frac=config.frac,
-            transform=transform)
-
-        if split == config.target_split:
-            import pdb
-            pdb.set_trace()
-
+        
+        pseudolabels = None
         if config.algorithm == "NoisyStudent" and config.target_split == split: 
             # Infer teacher outputs on unlabeled examples in sequential order
+            # During forward pass, ensure we are not shuffling and not applying strong augs
             print(f"Inferring teacher pseudolabels on {config.target_split} for Noisy Student")
             assert config.teacher_model_path is not None
             teacher_model = initialize_model(config, infer_d_out(full_dataset)).to(config.device)
             load(teacher_model, config.teacher_model_path, device=config.device)
             sequential_loader = get_eval_loader(
                 loader=config.eval_loader,
-                dataset=data,
+                dataset=full_dataset.get_subset(split, frac=config.frac, transform=eval_transform),
                 grouper=train_grouper,
                 batch_size=config.unlabeled_batch_size,
                 **config.loader_kwargs
             )
             pseudolabels = infer_predictions(teacher_model, sequential_loader, config)
             del teacher_model
-            data = WILDSPseudolabeledSubset(data, pseudolabels, unlabeled_train_transform)
-        
+
+        data = full_dataset.get_subset(
+            split,
+            frac=config.frac,
+            transform=transform)
+
         datasets[split] = configure_split_dict(
             data=data,
             split=split,
@@ -258,13 +255,13 @@ def main():
             grouper=train_grouper,
             config=config)
  
-        if config.target_split == split and config.active_learning:
-            # Perform active learning on the specified split
+        if config.active_learning and config.target_split == split:
             datasets[split]['label_manager'] = LabelManager(
-                datasets[split]['dataset'],
-                train_transform,
-                eval_transform,
-                unlabeled_train_transform=unlabeled_train_transform
+                subset=data,
+                train_transform=train_transform,
+                eval_transform=eval_transform,
+                unlabeled_train_transform=unlabeled_train_transform,
+                pseudolabels=pseudolabels
             )
 
     if config.use_wandb:

@@ -1,7 +1,7 @@
 from wilds.datasets.wilds_dataset import WILDSSubset
 from torch.utils.data import Subset
 import numpy as np
-from utils import configure_split_dict, configure_loaders, get_indices
+from utils import configure_split_dict, configure_loaders, get_indices, PseudolabeledSubset
 from train import train
 
 class LabelManager:
@@ -15,18 +15,25 @@ class LabelManager:
         - unlabeled_train_transform: transform to apply to unlabeled examples (if subset is called with train=True); overwrites 
             default train_transform. This is helpful for FixMatch.
     """
-    def __init__(self, subset: WILDSSubset, train_transform, eval_transform, verbose=True, unlabeled_train_transform=None):
+    def __init__(self, subset, train_transform, eval_transform, verbose=True, unlabeled_train_transform=None, pseudolabels=None):
         self.dataset = subset.dataset
+        self._pseudolabels = pseudolabels
+        
         self.labeled_train_transform = train_transform
         self.unlabeled_train_transform = unlabeled_train_transform if unlabeled_train_transform is not None else train_transform
         self.eval_transform = eval_transform
+
         self._idx = set(subset.indices)
         self._idx_labels_revealed = set()
+        self._idx_to_pos = {idx:p for p, idx in enumerate(subset.indices)}
         self.verbose = verbose
 
     def get_unlabeled_subset(self, train=False):
         if train:
-            return WILDSSubset(self.dataset, self.unlabeled_indices, self.unlabeled_train_transform)
+            subset = WILDSSubset(self.dataset, self.unlabeled_indices, self.unlabeled_train_transform)
+            if self._pseudolabels is not None: 
+                return PseudolabeledSubset(subset, self.unlabeled_pseudolabel_array)
+            else: return subset
         else:
             return WILDSSubset(self.dataset, self.unlabeled_indices, self.eval_transform)
 
@@ -82,7 +89,10 @@ class LabelManager:
     
     @property
     def unlabeled_pseudolabel_array(self):
-        return self.pseudolabels
+        if self._pseudolabels is not None:
+            return [self._pseudolabels[self._idx_to_pos[i]] for i in self.unlabeled_indices]
+        else:
+            raise Exception("No pseudolabels were provided to the label maanger.")
     
     @property
     def labeled_y_array(self):

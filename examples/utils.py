@@ -20,23 +20,29 @@ try:
 except Exception as e:
     pass
 
-class WILDSPseudolabeledSubset(WILDSSubset):
+class PseudolabeledSubset(WILDSSubset):
     """Pseudolabeled subset initialized from a labeled subset"""
-    def __init__(self, reference_subset, pseudolabels, transform):
+    def __init__(self, reference_subset, pseudolabels):
         assert len(reference_subset) == len(pseudolabels)
         self.pseudolabels = pseudolabels
         super().__init__(
-            reference_subset.dataset, reference_subset.indices, transform
+            reference_subset.dataset, reference_subset.indices, reference_subset.transform
         )
 
     def __getitem__(self, idx):
-        import pdb
-        pdb.set_trace()
         x, y_true, metadata = self.dataset[self.indices[idx]]
         y_pseudo = self.pseudolabels[idx]
         if self.transform is not None:
             x = self.transform(x)
         return x, y_pseudo, y_true, metadata
+
+def accuracy(pred, target, process_outputs_function):
+    assert len(pred) == len(target)
+    if pred.squeeze().dim() != 1:
+        pred = process_outputs_function(pred)
+    if target.squeeze().dim() != 1:
+        target = process_outputs_function(target)
+    return torch.mean((pred == target).float()) 
 
 def cross_entropy_with_logits_loss(input, soft_target):
     """
