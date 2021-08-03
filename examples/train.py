@@ -5,6 +5,7 @@ from utils import save_model, save_pred, get_pred_prefix, get_model_prefix
 import torch.autograd.profiler as profiler
 from configs.supported import process_outputs_functions
 from algorithms.metalearning import sample_metalearning_task
+from itertools import cycle
 
 from wilds.common.data_loaders import get_train_loader, get_eval_loader
 from wilds.datasets.wilds_dataset import WILDSSubset
@@ -92,9 +93,9 @@ def run_epoch(algorithm, dataset, general_logger, epoch, config, train, unlabele
         assert 'loader' in unlabeled_dataset, "A data loader must be defined for the dataset."
 
     batches = (
-        zip(dataset['loader'], unlabeled_dataset['loader']) if unlabeled_dataset
+        zip(cycle(dataset['loader']), unlabeled_dataset['loader']) if unlabeled_dataset
         else dataset['loader']
-    ) # TODO: since we're working w/ very small labeled batch sizes, I think this skips a lot of the unlabeled dataset.
+    ) # TODO: w/o cycle, we skip most unlabeled examples, but w/ cycle, we overfit to labeled?
     if config.progress_bar:
         batches = tqdm(batches)
 

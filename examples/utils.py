@@ -38,9 +38,9 @@ class PseudolabeledSubset(WILDSSubset):
 
 def accuracy(pred, target, process_outputs_function):
     assert len(pred) == len(target)
-    if pred.squeeze().dim() != 1:
+    if pred.dim() > 1:
         pred = process_outputs_function(pred)
-    if target.squeeze().dim() != 1:
+    if target.dim() > 1:
         target = process_outputs_function(target)
     return torch.mean((pred == target).float()) 
 
