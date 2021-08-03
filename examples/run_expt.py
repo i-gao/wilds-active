@@ -199,12 +199,12 @@ def main():
         # For FixMatch, we need our loader to return batches in the form ((x_weak, x_strong), m)
         # We do this by initializing a special transform function
         unlabeled_train_transform = initialize_transform(
-            config.train_transform, config, full_dataset, additional_transform_name="fixmatch"
+            config.train_transform, config, full_dataset, additional_transform_name="fixmatch" # TODO not using
         )
     elif config.algorithm == "NoisyStudent":
         # For NoisyStudent, we need our loader to apply a strong augmentation to examples
         unlabeled_train_transform = initialize_transform(
-            config.train_transform, config, full_dataset, additional_transform_name="noisy_student"
+            config.train_transform, config, full_dataset, additional_transform_name="noisy_student" # TODO not using
         )    
 
     train_grouper = CombinatorialGrouper(
@@ -227,6 +227,27 @@ def main():
             split,
             frac=config.frac,
             transform=transform)
+
+        if split == config.target_split:
+            import pdb
+            pdb.set_trace()
+
+        if config.algorithm == "NoisyStudent" and config.target_split == split: 
+            # Infer teacher outputs on unlabeled examples in sequential order
+            print(f"Inferring teacher pseudolabels on {config.target_split} for Noisy Student")
+            assert config.teacher_model_path is not None
+            teacher_model = initialize_model(config, infer_d_out(full_dataset)).to(config.device)
+            load(teacher_model, config.teacher_model_path, device=config.device)
+            sequential_loader = get_eval_loader(
+                loader=config.eval_loader,
+                dataset=data,
+                grouper=train_grouper,
+                batch_size=config.unlabeled_batch_size,
+                **config.loader_kwargs
+            )
+            pseudolabels = infer_predictions(teacher_model, sequential_loader, config)
+            del teacher_model
+            data = WILDSPseudolabeledSubset(data, pseudolabels, unlabeled_train_transform)
         
         datasets[split] = configure_split_dict(
             data=data,
@@ -245,38 +266,6 @@ def main():
                 eval_transform,
                 unlabeled_train_transform=unlabeled_train_transform
             )
-
-    if config.algorithm == "NoisyStudent": 
-        # For Noisy Student, add a pseudolabeled split
-        print("Inferring teacher pseudolabels for Noisy Student")
-        assert config.teacher_model_path is not None
-        d_out = infer_d_out(full_dataset)
-        teacher_model = initialize_model(config, d_out).to(config.device)
-        load(teacher_model, config.teacher_model_path, device=config.device)
-        # Infer teacher outputs on unlabeled examples in sequential order
-        target_split_dataset = datasets[config.target_split]['dataset']
-        sequential_loader = get_eval_loader(
-            loader=config.eval_loader,
-            dataset=target_split_dataset,
-            grouper=train_grouper,
-            batch_size=config.unlabeled_batch_size,
-            **config.loader_kwargs
-        )
-        teacher_outputs = infer_predictions(teacher_model, sequential_loader, config)
-        teacher_model = teacher_model.to(torch.device("cpu"))
-        data = WILDSPseudolabeledSubset( # TODO
-            reference_subset=target_split_dataset,
-            pseudolabels=teacher_outputs, 
-            transform=unlabeled_train_transform
-        )
-        datasets[f'pseudolabeled_{config.target_split}'] = configure_split_dict(
-            data=data,
-            split=f'pseudolabeled_{config.target_split}',
-            split_name=f'Pseudolabeled {full_dataset.split_names[config.target_split]}',
-            train=True,
-            verbose=verbose,
-            grouper=train_grouper,
-            config=config)
 
     if config.use_wandb:
         initialize_wandb(config)

@@ -81,6 +81,10 @@ class LabelManager:
         return self.get_unlabeled_subset().y_array
     
     @property
+    def unlabeled_pseudolabel_array(self):
+        return self.pseudolabels
+    
+    @property
     def labeled_y_array(self):
         return self.get_labeled_subset().y_array
         
