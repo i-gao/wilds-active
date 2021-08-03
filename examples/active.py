@@ -139,7 +139,7 @@ def run_active_learning(selection_fn, algorithm, datasets, general_logger, group
             assert full_dataset is not None
             labeled_dataset = WILDSSubset(
                 full_dataset,
-                np.concatenate((label_manager.labeled_indices, datasets['train']['dataset'].indices)), # target points at front
+                np.concatenate((label_manager.labeled_indices, datasets['train']['dataset'].indices)).astype(int), # target points at front
                 label_manager.labeled_train_transform
             )       
         else:
