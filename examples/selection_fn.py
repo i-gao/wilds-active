@@ -68,6 +68,7 @@ class SelectionFunction():
         Labels K examples by passing label_manager the indexes of examples to reveal
         Wrapper for the select() function implemented by subclasses
         """
+        if K == 0: return
         groups = self.select_grouper.metadata_to_group(label_manager.unlabeled_metadata_array)
         group_ids = groups.unique().int().tolist()
         remaining = (torch.ones(len(group_ids)) * K).int().tolist()
