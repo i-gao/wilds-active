@@ -132,7 +132,7 @@ def main():
     parser.add_argument('--eval_additional_every', default=1, type=int, help='Eval additional splits every _ epochs.')
 
     # Misc
-    parser.add_argument('--device', type=int, default=0)
+    parser.add_argument('--device', type=int, nargs='+', default=[0])
     parser.add_argument('--seed', type=int, default=0)
     parser.add_argument('--log_dir', default='./logs')
     parser.add_argument('--log_every', default=50, type=int)
@@ -148,8 +148,21 @@ def main():
     config = parser.parse_args()
     config = populate_defaults(config)
 
-    # set device
-    config.device = torch.device("cuda:" + str(config.device)) if torch.cuda.is_available() else torch.device("cpu")
+    # Set device
+    if torch.cuda.is_available():
+        device_count = torch.cuda.device_count()
+        if len(config.device) > device_count:
+            raise ValueError(f"Specified {len(config.device)} devices, but only {device_count} devices found.")
+        config.use_data_parallel = len(config.device) > 1
+        try: 
+            device_str = ",".join(map(str, config.device))
+            config.device = torch.device(f"cuda:{device_str}")
+        except RuntimeError as e:
+            print(f"Failed to initialize CUDA. Using torch.device('cuda') instead. Error: {str(e)}")
+            config.device = torch.device("cuda")
+    else:
+        config.use_data_parallel = False
+        config.device = torch.device("cpu")
 
     ## Initialize logs
     if os.path.exists(config.log_dir) and config.resume:
