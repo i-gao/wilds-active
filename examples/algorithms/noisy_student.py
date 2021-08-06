@@ -75,19 +75,20 @@ class NoisyStudent(SingleModelAlgorithm):
             self.process_outputs_function = process_outputs_functions[config.process_outputs_function]
         
     def process_batch(self, labeled_batch, unlabeled_batch=None):
+        assert labeled_batch is not None or unlabeled_batch is not None
+        results = {}
         # Labeled examples
-        x, y_true, metadata = labeled_batch
-        x = x.to(self.device)
-        y_true = y_true.to(self.device)
-        g = self.grouper.metadata_to_group(metadata).to(self.device)
-        outputs = self.model(x)
-        # package the results
-        results = {
-            'g': g,
-            'y_true': y_true,
-            'y_pred': outputs,
-            'metadata': metadata
-        }
+        if labeled_batch is not None:
+            x, y_true, metadata = labeled_batch
+            x = x.to(self.device)
+            y_true = y_true.to(self.device)
+            g = self.grouper.metadata_to_group(metadata).to(self.device)
+            outputs = self.model(x)
+            # package the results
+            results['g'] = g
+            results['y_true'] = y_true
+            results['y_pred'] = outputs
+            results['metadata'] = metadata 
         # Unlabeled examples
         if unlabeled_batch is not None:
             x, y_pseudo, y_true, metadata = unlabeled_batch # x should be strongly augmented
@@ -104,8 +105,11 @@ class NoisyStudent(SingleModelAlgorithm):
 
     def objective(self, results):
         # Labeled loss
-        classification_loss = self.loss.compute(results['y_pred'], results['y_true'], return_dict=False)
-
+        if 'y_pred' in results:
+            classification_loss = self.loss.compute(results['y_pred'], results['y_true'], return_dict=False)
+        else:
+            classification_loss = 0
+        
         # Pseudolabel loss
         if 'unlabeled_y_pred' in results: 
             consistency_loss = self.unlabeled_loss.compute(

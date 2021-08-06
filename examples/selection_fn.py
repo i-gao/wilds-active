@@ -21,6 +21,8 @@ def initialize_selection_function(config, algorithm, select_grouper, algo_groupe
         selection_fn = UncertaintySampling(copy.deepcopy(algorithm), select_grouper, config)
     elif config.selection_function=='highest_loss':
         selection_fn = HighestLoss(algorithm, select_grouper, config)
+    elif config.selection_function=='max_grad_norm':
+        selection_fn = MaxGradientNorm(algorithm, select_grouper, config)
     elif config.selection_function=='approximate_lookahead':
         selection_fn = ApproximateLookahead(algorithm, algo_grouper, select_grouper, config)
     else:
@@ -186,7 +188,9 @@ class UncertaintySampling(SelectionFunction):
 ######### ORACLES (use label information) #########
 
 class HighestLoss(SelectionFunction):
-    """oracle method: label the examples with highest loss"""
+    """oracle method: label the examples with highest loss, as defined by the algorithm
+    i.e. ERM will use highest classification loss, PseudoLabel will use highest classification + consistency loss.
+    """
     def __init__(self, uncertainty_model, select_grouper, config):
         self.uncertainty_model = uncertainty_model
         super().__init__(
@@ -197,7 +201,7 @@ class HighestLoss(SelectionFunction):
 
     def select(self, label_manager, K_per_group, unlabeled_indices, groups, group_ids):
         self.uncertainty_model.eval()
-        # Get loader for estimating uncertainties
+        # Get loader for estimating loss
         loader = get_eval_loader(
             loader='standard',
             dataset=label_manager.get_unlabeled_subset(),
@@ -205,10 +209,11 @@ class HighestLoss(SelectionFunction):
             **self.config.loader_kwargs)
         iterator = tqdm(loader) if self.config.progress_bar else loader
 
-        # Get uncertainties and predictions
+        # Get losses
         losses = []
-        for x, y, m in iterator:
-            res = self.uncertainty_model.evaluate((x, y, m))
+        for batch in iterator:
+            # pass as both labeled and unlabeled to get classification loss and consistency loss
+            res = self.uncertainty_model.evaluate(batch, unlabeled_batch=batch)
             losses.append(res['objective']) # float, not torch float
         losses = torch.tensor(losses)
         
@@ -222,8 +227,54 @@ class HighestLoss(SelectionFunction):
             reveal = reveal + reveal_g
         return reveal
 
+class MaxGradientNorm(SelectionFunction):
+    """oracle method: label the examples with the highest loss gradient norm, where loss is defined by the algorithm
+    i.e. ERM will use grad of classification loss, PseudoLabel will use grad of classification + consistency loss.
+    Approximation of retraining-based methods.
+    """
+    def __init__(self, uncertainty_model, select_grouper, config):
+        self.uncertainty_model = uncertainty_model
+        super().__init__(
+            select_grouper=select_grouper,
+            is_trainable=False,
+            config=config
+        )
+
+    def select(self, label_manager, K_per_group, unlabeled_indices, groups, group_ids):
+        self.uncertainty_model.train()
+        # Get loader for estimating gradients
+        loader = get_eval_loader(
+            loader='standard',
+            dataset=label_manager.get_unlabeled_subset(),
+            batch_size=1,
+            **self.config.loader_kwargs)
+        iterator = tqdm(loader) if self.config.progress_bar else loader
+
+        # Get gradients
+        grads = []
+        for batch in iterator:
+            x = batch[0]
+            x.requires_grad = True
+            res = self.uncertainty_model.process_batch(batch, unlabeled_batch=batch)
+            obj = self.uncertainty_model.objective(res)
+            obj.backward()
+            norm = torch.linalg.norm(x.grad)
+            grads.append(norm.item()) # float, not torch float
+            self.uncertainty_model.sanitize_dict(res)
+        grads = torch.tensor(grads)
+        
+        # Choose max gradient norm to reveal labels
+        reveal = []
+        for i, K in enumerate(K_per_group):
+            g = group_ids[i]
+            K = min(K, sum(groups == g).int().item())
+            _, top_idxs = torch.topk(grads[groups == g], K)
+            reveal_g = unlabeled_indices[groups == g][top_idxs].tolist()
+            reveal = reveal + reveal_g
+        return reveal
+
 class MStepLookahead(SelectionFunction):
-    """oracle method: try a gradient step on some points & label those that best improve accuracy"""
+    """oracle method: retraining-based; take M gradients step on some points & label those that best improve accuracy"""
     def __init__(self, uncertainty_model, algo_grouper, select_grouper, config):
         self.uncertainty_model = uncertainty_model
         self.grouper = algo_grouper
@@ -266,7 +317,7 @@ class MStepLookahead(SelectionFunction):
         return res[self.config.val_metric]
 
 class ApproximateLookahead(MStepLookahead):
-    """oracle method: try a gradient step on G randomly sampled groups of K & label group that best improves accuracy"""
+    """oracle method: try M gradient steps on G randomly sampled groups of K & label group that best improves accuracy"""
     def __init__(self, uncertainty_model, algo_grouper, select_grouper, config):
         self.G = config.selection_function_kwargs.get('n_simulations', 100)
         self.random_sampler = RandomSampling(select_grouper, config)

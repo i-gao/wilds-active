@@ -46,11 +46,11 @@ class PseudoLabel(SingleModelAlgorithm):
         self.logged_fields.append("classification_loss")
         self.logged_fields.append("consistency_loss")
 
-    def process_batch(self, labeled_batch, unlabeled_batch=None):
+    def process_batch(self, labeled_batch=None, unlabeled_batch=None):
         """
         Args:
-            - labeled_batch: examples (x, y, m) 
-            - unlabeled_batch: examples (x, m)
+            - labeled_batch: examples (x, y, m).
+            - unlabeled_batch: examples (x, _, m)
         Returns: results, a dict containing keys:
             - 'g': groups for the labeled batch
             - 'y_true': true labels for the labeled batch
@@ -63,19 +63,21 @@ class PseudoLabel(SingleModelAlgorithm):
             - 'unlabeled_y_pred': outputs (logits) on x of the unlabeled batch
             - 'unlabeled_metadata': metdata tensor for the unlabeled batch
         """
+        assert labeled_batch is not None or unlabeled_batch is not None
+        results = {}
         # Labeled examples
-        x, y_true, metadata = labeled_batch
-        x = x.to(self.device)
-        y_true = y_true.to(self.device)
-        g = self.grouper.metadata_to_group(metadata).to(self.device)
-        outputs = self.model(x)
-        # package the results
-        results = {
-            'g': g,
-            'y_true': y_true,
-            'y_pred': outputs,
-            'metadata': metadata
-        }
+        if labeled_batch is not None:
+            x, y_true, metadata = labeled_batch
+            x = x.to(self.device)
+            y_true = y_true.to(self.device)
+            g = self.grouper.metadata_to_group(metadata).to(self.device)
+            outputs = self.model(x)
+            # package the results
+            results['g'] = g
+            results['y_true'] = y_true
+            results['y_pred'] = outputs
+            results['metadata'] = metadata 
+
         # Unlabeled examples
         if unlabeled_batch is not None:
             x, _, metadata = unlabeled_batch
@@ -97,9 +99,12 @@ class PseudoLabel(SingleModelAlgorithm):
 
     def objective(self, results):
         # Labeled loss
-        classification_loss = self.loss.compute(results['y_pred'], results['y_true'], return_dict=False)
+        if 'y_pred' in results:
+            classification_loss = self.loss.compute(results['y_pred'], results['y_true'], return_dict=False)
+        else:
+            classification_loss = 0
         # Pseudolabeled loss
-        if 'unlabeled_y_pseudo' in results:
+        if 'unlabeled_y_pred' in results:
             mask = results['unlabeled_mask']
             consistency_loss = self.loss.compute(
                 results['unlabeled_y_pred'][mask], 

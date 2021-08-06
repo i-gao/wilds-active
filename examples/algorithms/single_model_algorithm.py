@@ -73,11 +73,13 @@ class SingleModelAlgorithm(GroupAlgorithm):
     def objective(self, results):
         raise NotImplementedError
 
-    def evaluate(self, batch):
+    def evaluate(self, batch, unlabeled_batch=None):
         """
         Process the batch and update the log, without updating the model
         Args:
-            - batch (tuple of Tensors): a batch of data yielded by data loaders
+            - batch (tuple of Tensors): a batch of labeled data yielded by data loaders
+            - unlabeled_batch: unlabled data. Use cases for passing in include if you're interested
+            in looking at the final loss (including unlabeled loss) or retrieving the unlabeled outputs
         Output:
             - results (dictionary): information about the batch, such as:
                 - g (Tensor)
@@ -88,7 +90,7 @@ class SingleModelAlgorithm(GroupAlgorithm):
                 - objective (float)
         """
         assert not self.is_training
-        results = self.process_batch(batch)
+        results = self.process_batch(batch, unlabeled_batch)
         results['objective'] = self.objective(results).item()
         self.update_log(results)
         return self.sanitize_dict(results)
@@ -110,7 +112,7 @@ class SingleModelAlgorithm(GroupAlgorithm):
         """
         assert self.is_training
         # process batch
-        results = self.process_batch(batch, unlabeled_batch)
+        results = self.process_batch(batch, unlabeled_batch=unlabeled_batch)
         self._update(results)
         # log results
         self.update_log(results)

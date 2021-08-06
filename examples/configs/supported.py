@@ -39,5 +39,6 @@ optimizers = ['SGD', 'Adam', 'AdamW']
 schedulers = ['linear_schedule_with_warmup', 'ReduceLROnPlateau', 'StepLR']
 selection_functions = [
     'random', 'uncertainty', 'uncertainty_fixed', 
-    'highest_loss', 'approximate_lookahead'
+    'highest_loss', 'approximate_lookahead',
+    'max_grad_norm'
 ]
