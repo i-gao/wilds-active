@@ -21,8 +21,6 @@ def initialize_selection_function(config, algorithm, select_grouper, algo_groupe
         selection_fn = UncertaintySampling(copy.deepcopy(algorithm), select_grouper, config)
     elif config.selection_function=='highest_loss':
         selection_fn = HighestLoss(algorithm, select_grouper, config)
-    elif config.selection_function=='confidently_incorrect':
-        selection_fn = ConfidentlyIncorrect(algorithm, select_grouper, config)
     elif config.selection_function=='approximate_lookahead':
         selection_fn = ApproximateLookahead(algorithm, algo_grouper, select_grouper, config)
     else:
@@ -220,50 +218,6 @@ class HighestLoss(SelectionFunction):
             g = group_ids[i]
             K = min(K, sum(groups == g).int().item())
             _, top_idxs = torch.topk(losses[groups == g], K)
-            reveal_g = unlabeled_indices[groups == g][top_idxs].tolist()
-            reveal = reveal + reveal_g
-        return reveal
-
-class ConfidentlyIncorrect(SelectionFunction):
-    """oracle method: label the most confident incorrect predictions"""
-    def __init__(self, uncertainty_model, select_grouper, config):
-        self.uncertainty_model = uncertainty_model
-        super().__init__(
-            select_grouper=select_grouper,
-            is_trainable=False,
-            config=config
-        )
-
-    def select(self, label_manager, K_per_group, unlabeled_indices, groups, group_ids):
-        self.uncertainty_model.eval()
-        # Get loader for estimating uncertainties
-        loader = get_eval_loader(
-            loader='standard',
-            dataset=label_manager.get_unlabeled_subset(),
-            batch_size=1,
-            **self.config.loader_kwargs)
-        iterator = tqdm(loader) if self.config.progress_bar else loader
-        
-        # Get uncertainties and predictions
-        certainties = []
-        correct = []
-        for x, y, m in iterator:
-            res = self.uncertainty_model.evaluate((x, y, m))
-            logits = res['y_pred'] # before process_outputs_fn
-            probs = F.softmax(logits, 1)
-            certainty, pred = torch.max(probs, 1)
-            certainties.append(certainty)
-            correct.append(pred == y)
-        certainties = torch.cat(certainties)
-        correct = torch.cat(correct)
-
-        # Choose most certain and incorrect to reveal labels
-        reveal = []
-        incorrect_certainties = certainties * ~correct
-        for i, K in enumerate(K_per_group):
-            g = group_ids[i]
-            K = min(K, sum(groups == g).int().item())
-            _, top_idxs = torch.topk(incorrect_certainties[groups == g], K)
             reveal_g = unlabeled_indices[groups == g][top_idxs].tolist()
             reveal = reveal + reveal_g
         return reveal
