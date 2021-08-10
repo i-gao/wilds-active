@@ -5,7 +5,6 @@ from utils import save_model, save_pred, get_pred_prefix, get_model_prefix
 import torch.autograd.profiler as profiler
 from configs.supported import process_outputs_functions
 from algorithms.metalearning import sample_metalearning_task
-# from itertools import cycle
 
 from wilds.common.data_loaders import get_train_loader, get_eval_loader
 from wilds.datasets.wilds_dataset import WILDSSubset
@@ -91,12 +90,9 @@ def run_epoch(algorithm, dataset, general_logger, epoch, config, train, unlabele
     assert 'loader' in dataset, "A data loader must be defined for the dataset."
     if unlabeled_dataset:
         assert 'loader' in unlabeled_dataset, "A data loader must be defined for the dataset."
-
     
     ## if itertools.cycle is the issue, here's a loop to fix it
     def cycle(iterable):
-        import pdb
-        pdb.set_trace()
         iterator = iter(iterable)
         while True:
             try:
