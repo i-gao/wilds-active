@@ -35,7 +35,7 @@ class SingleModelAlgorithm(GroupAlgorithm):
             device=config.device,
             grouper=grouper,
             logged_metrics=logged_metrics,
-            logged_fields=['objective'],
+            logged_fields=['objective', 'percent_src_examples'],
             schedulers=[scheduler,],
             scheduler_metric_names=[config.scheduler_metric_name,],
             no_group_logging=config.no_group_logging,
@@ -92,6 +92,12 @@ class SingleModelAlgorithm(GroupAlgorithm):
         assert not self.is_training
         results = self.process_batch(batch, unlabeled_batch)
         results['objective'] = self.objective(results).item()
+        
+        # log batch statistics
+        self.save_metric_for_logging( 
+            results, "percent_src_examples", torch.mean((batch[2][:,-1] == 0).float())
+        ) # assuming that src = train is always split 0 (which is true for the WILDS datasets)
+
         self.update_log(results)
         return self.sanitize_dict(results)
 
@@ -111,11 +117,15 @@ class SingleModelAlgorithm(GroupAlgorithm):
                 - objective (float)
         """
         assert self.is_training
-        import pdb
-        pdb.set_trace()
         # process batch
         results = self.process_batch(batch, unlabeled_batch=unlabeled_batch)
         self._update(results)
+
+        # log batch statistics
+        self.save_metric_for_logging( 
+            results, "percent_src_examples", torch.mean((batch[2][:,-1] == 0).float())
+        ) # assuming that src = train is always split 0 (which is true for the WILDS datasets)
+        
         # log results
         self.update_log(results)
         return self.sanitize_dict(results)
