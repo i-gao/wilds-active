@@ -60,6 +60,7 @@ def main():
     parser.add_argument('--active_learning', type=parse_bool, const=True, nargs='?')
     parser.add_argument('--target_split', default="test", type=str, help='Split from which to sample labeled examples and use as unlabeled data for self-training.')
     parser.add_argument('--concat_source_labeled', type=parse_bool, const=True, nargs='?', default=False, help="Concatenate labeled source examples to labeled target examples.")
+    parser.add_argument('--upsample_target_labeled', type=parse_bool, const=True, nargs='?', default=False, help="If concatenating source labels, upsample target labels s.t. our labeled batches are 1/2 src and 1/2 tgt.")
     parser.add_argument('--selection_function', choices=supported.selection_functions)
     parser.add_argument('--selection_function_kwargs', nargs='*', action=ParseKwargs, default={}, help="keyword arguments for selection fn passed as key1=value1 key2=value2")
     parser.add_argument('--n_rounds', type=int, default=1, help="number of times to repeat the selection-train cycle")
@@ -197,6 +198,18 @@ def main():
         download=config.download,
         split_scheme=config.split_scheme,
         **config.dataset_kwargs)
+
+    # In this project, we sometimes train on batches of mixed splits, e.g. some train labeled examples and test labeled examples
+    # Within each batch, we may want to sample uniformly across split, or log the train v. test label balance
+    # To facilitate this, we'll hack the WILDS dataset to include each point's split in the metadata array
+    UNUSED_SPLIT = 10 # this doesn't overlap with any real split values in WILDS
+    split_array = torch.tensor(full_dataset.split_array).unsqueeze(1) 
+    split_array[split_array < 0] = UNUSED_SPLIT # unused data is given a split of -1, but the grouper can only accept nonnegative values
+    full_dataset._metadata_array = torch.cat((
+        full_dataset.metadata_array, 
+        split_array,
+    ), dim=1) # add split as a metadata column
+    full_dataset._metadata_fields.append('split')
 
     # To implement data augmentation (i.e., have different transforms
     # at training time vs. test time), modify these two lines:

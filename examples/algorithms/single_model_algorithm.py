@@ -111,6 +111,8 @@ class SingleModelAlgorithm(GroupAlgorithm):
                 - objective (float)
         """
         assert self.is_training
+        import pdb
+        pdb.set_trace()
         # process batch
         results = self.process_batch(batch, unlabeled_batch=unlabeled_batch)
         self._update(results)

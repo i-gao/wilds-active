@@ -1,8 +1,11 @@
 from wilds.datasets.wilds_dataset import WILDSSubset
+from wilds.common.grouper import CombinatorialGrouper
+import torch
 from torch.utils.data import Subset
 import numpy as np
 from utils import configure_split_dict, configure_loaders, get_indices, PseudolabeledSubset
 from train import train
+from copy import copy
 
 class LabelManager:
     """
@@ -141,17 +144,30 @@ def run_active_learning(selection_fn, algorithm, datasets, general_logger, group
                 full_dataset,
                 np.concatenate((label_manager.labeled_indices, datasets['train']['dataset'].indices)).astype(int), # target points at front
                 label_manager.labeled_train_transform
-            )       
+            ) 
         else:
             labeled_dataset = label_manager.get_labeled_subset()
+
+        if config.upsample_target_labeled:
+            # upsample target labels (compared to src labels) using a weighted sampler
+            # do this by grouping by split and then using --uniform_over_groups=True
+            labeled_grouper = CombinatorialGrouper(
+                dataset=full_dataset,
+                groupby_fields=['split']
+            )
+            labeled_config=copy(config)
+            labeled_config.uniform_over_groups = True
+        else:
+            labeled_config = config
+            labeled_grouper = grouper
 
         configure_loaders( # labeled for training
             split_dict=datasets[labeled_split_name],
             data=labeled_dataset,
             train=True,
-            grouper=grouper,
+            grouper=labeled_grouper,
             batch_size=config.batch_size,
-            config=config)
+            config=labeled_config)
         configure_loaders( # unlabeled for training
             split_dict=datasets[f'unlabeled_{config.target_split}_shuffled'],
             data=label_manager.get_unlabeled_subset(train=True),
