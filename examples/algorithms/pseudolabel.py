@@ -42,7 +42,7 @@ class PseudoLabel(SingleModelAlgorithm):
         if config.process_outputs_function is not None: 
             self.process_outputs_function = process_outputs_functions[config.process_outputs_function]
         # Additional logging
-        self.logged_fields.append("pseudolabels_kept_frac")
+        self.logged_fields.append("group_pseudolabels_kept_frac")
         self.logged_fields.append("classification_loss")
         self.logged_fields.append("consistency_loss")
 
@@ -110,10 +110,18 @@ class PseudoLabel(SingleModelAlgorithm):
                 results['unlabeled_y_pred'][mask], 
                 results['unlabeled_y_pseudo'][mask], 
                 return_dict=False)
-            pseudolabels_kept_frac = mask.count_nonzero().item() / mask.shape[0]
+
+            # pseudolabels kept frac / group
+            pseudolabel_fracs = torch.tensor([
+                mask[results['unlabeled_g'] == i].float().mean()
+                for i in range(self.grouper.n_groups)
+            ])
+            pseudolabel_fracs[torch.isnan(pseudolabel_fracs)] = 0
+            results['group_pseudolabels_kept_frac'] = pseudolabel_fracs
+            
         else: 
             consistency_loss = 0
-            pseudolabels_kept_frac = 0
+            results['group_pseudolabels_kept_frac'] = torch.zeros(self.grouper.n_groups)
 
         # Add to results for additional logging
         self.save_metric_for_logging(
@@ -122,8 +130,4 @@ class PseudoLabel(SingleModelAlgorithm):
         self.save_metric_for_logging(
             results, "consistency_loss", consistency_loss
         )
-        self.save_metric_for_logging(
-            results, "pseudolabels_kept_frac", pseudolabels_kept_frac
-        )
-
         return classification_loss + self.pseudolabel_lambda * consistency_loss 
