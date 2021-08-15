@@ -188,7 +188,7 @@ def run_active_learning(selection_fn, algorithm, datasets, general_logger, group
             algorithm=algorithm,
             datasets=datasets,
             train_split=labeled_split_name,
-            val_split=None,
+            val_split="val",
             unlabeled_split=f"unlabeled_{config.target_split}_shuffled",
             general_logger=general_logger,
             config=config,
