@@ -137,10 +137,10 @@ class FixMatch(SingleModelAlgorithm):
 
         # Add to results for additional logging
         self.save_metric_for_logging(
-            results, "classification_loss", classification_loss
+            results, "classification_loss", self.fixmatch_labeled_weight * classification_loss
         )
         self.save_metric_for_logging(
-            results, "consistency_loss", consistency_loss
+            results, "consistency_loss", self.fixmatch_unlabeled_weight * consistency_loss
         )
         self.save_metric_for_logging(
             results, "pseudolabels_kept_frac", pseudolabels_kept_frac
