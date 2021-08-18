@@ -51,7 +51,8 @@ class FixMatch(SingleModelAlgorithm):
             n_train_steps=n_train_steps,
         )
         # algorithm hyperparameters
-        self.fixmatch_lambda = config.self_training_lambda
+        self.fixmatch_labeled_weight = config.self_training_labeled_weight
+        self.fixmatch_unlabeled_weight = config.self_training_unlabeled_weight
         self.confidence_threshold = config.self_training_threshold
         if config.process_outputs_function is not None:
             self.process_outputs_function = process_outputs_functions[config.process_outputs_function]
@@ -145,4 +146,4 @@ class FixMatch(SingleModelAlgorithm):
             results, "pseudolabels_kept_frac", pseudolabels_kept_frac
         )
 
-        return classification_loss + self.fixmatch_lambda * consistency_loss
+        return self.fixmatch_labeled_weight * classification_loss + self.fixmatch_unlabeled_weight * consistency_loss
