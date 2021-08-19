@@ -72,11 +72,11 @@ class LabelManager:
 
     @property
     def labeled_indices(self):
-        return list(self._idx_labels_revealed) 
+        return sorted(list(self._idx_labels_revealed))
 
     @property
     def unlabeled_indices(self):
-        return list(self._idx - self._idx_labels_revealed)
+        return sorted(list(self._idx - self._idx_labels_revealed))
     
     @property
     def unlabeled_metadata_array(self):
