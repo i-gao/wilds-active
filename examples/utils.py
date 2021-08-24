@@ -377,7 +377,7 @@ def get_model_prefix(dataset, config):
     replicate_str = get_replicate_str(dataset, config)
     prefix = os.path.join(
         config.log_dir,
-        f"{dataset_name}_{replicate_str}_")
+        f"{dataset_name}_{replicate_str}_round:0_")
     return prefix
 
 def get_indices(reference, values):
