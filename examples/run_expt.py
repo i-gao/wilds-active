@@ -391,7 +391,8 @@ def main():
             datasets=datasets,
             epoch=epoch,
             general_logger=logger,
-            config=config)
+            config=config,
+            rnd=prev_round)
 
     logger.close()
     for split in datasets:

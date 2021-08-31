@@ -209,7 +209,7 @@ def train(algorithm, datasets, general_logger, config, epoch_offset, best_val_me
         general_logger.write('\n')
 
 
-def evaluate(algorithm, datasets, epoch, general_logger, config):
+def evaluate(algorithm, datasets, epoch, general_logger, config, rnd=None):
     algorithm.eval()
     for split, dataset in datasets.items():
         if (not config.evaluate_all_splits) and (split not in config.eval_splits):
@@ -239,7 +239,7 @@ def evaluate(algorithm, datasets, epoch, general_logger, config):
 
         # Skip saving train preds, since the train loader generally shuffles the data
         if split != 'train':
-            save_pred_if_needed(y_pred, dataset, epoch, None, config, is_best=False, force_save=True)
+            save_pred_if_needed(y_pred, dataset, epoch, rnd, config, is_best=False, force_save=True)
 
 def infer_predictions(model, loader, config):
     """
