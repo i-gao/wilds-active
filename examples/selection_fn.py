@@ -8,7 +8,7 @@ import copy
 from utils import configure_split_dict
 from train import run_epoch
 from tqdm import tqdm
-import os
+import glob
 from shutil import copyfile
 
 def initialize_selection_function(config, algorithm, select_grouper, algo_grouper=None):
@@ -49,10 +49,7 @@ class SelectionFunction():
         self._prior_selections = [] # loaded selections from file
         self.log_dir = self.config.log_dir
         self.mode = 'w'
-
-        # for safety, copy previous selections.csv -> selections_old.csv
-        if os.path.exists(f"{self.log_dir}/selections.csv"): 
-            copyfile(f"{self.log_dir}/selections.csv", f"{self.log_dir}/selections_old.csv")
+        self.round = 0
 
     # def update(self):
     #     """
@@ -89,6 +86,7 @@ class SelectionFunction():
 
         label_manager.reveal_labels(reveal)
         self.save_selections(reveal)
+        self.round += 1
 
     def select(self, label_manager, K_per_group:[int], unlabeled_indices: torch.Tensor, groups: torch.Tensor, group_ids:[int]):
         """
@@ -103,25 +101,33 @@ class SelectionFunction():
         """
         raise NotImplementedError
 
-    def load_selections(self, csvpath):
+    def load_selections(self, path):
         """
-        Loads indices to select in the order of some csv
+        Loads indices to select in the order specified by saved round:{}_selections.csv
         """
-        try:
-            df = pd.read_csv(csvpath, index_col=None, header=None)
-        except:
-            print(f"Couldn't find this file of previous selections: {csvpath}.")
-            return 
+        if path.endswith('.csv'): csvpaths = [path]
+        else: csvpaths = glob.glob(f'{path}/round:*_selections.csv')
+
+        for csvpath in sorted(csvpaths):
+            rnd = int(re.search(r'round:(\d+)', csvpath).group(1))
+            assert rnd > self.round
+            self.round = rnd
+
+            try: df = pd.read_csv(csvpath, index_col=None, header=None)
+            except:
+                print(f"Couldn't find this file of previous selections: {csvpath}.")
+                continue 
+            
+            assert len(df.columns) == 1
+            self._prior_selections.append(df[0].tolist())
         
-        assert len(df.columns) == 1
-        self._prior_selections = df[0].tolist()
         print(f"Loaded {len(self._prior_selections)} previous selections")
 
     def save_selections(self, indices):
         """
         Saves indices of selected points
         """
-        csvpath = f"{self.log_dir}/selections.csv"
+        csvpath = f"{self.log_dir}/round:{self.round}_selections.csv"
         df = pd.DataFrame(indices)
         df.to_csv(csvpath, mode=self.mode, index=False, header=False)
         # now that we've written, append future rounds

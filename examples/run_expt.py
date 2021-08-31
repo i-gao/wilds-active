@@ -316,7 +316,7 @@ def main():
     if config.pretrained_model_path is not None and os.path.exists(config.pretrained_model_path):
         # The full model name is expected to be specified, so just load.
         try:
-            prev_epoch, best_val_metric = load(algorithm, config.pretrained_model_path, device=config.device)
+            prev_epoch, _, best_val_metric = load(algorithm, config.pretrained_model_path, device=config.device)
             epoch_offset = 0
             logger.write(
                 (f'Initialized algorithm with pretrained weights from {config.pretrained_model_path} ')
@@ -341,7 +341,9 @@ def main():
                     latest_epoch = max(epochs)
                     save_path = model_prefix + f'epoch:{latest_epoch}_model.pth'
             try:
-                prev_epoch, best_val_metric = load(algorithm, save_path, config.device)
+                prev_epoch, prev_round, best_val_metric = load(algorithm, save_path, config.device)
+                # also load previous selections
+                
                 epoch_offset = prev_epoch + 1
                 logger.write(f'Resuming from epoch {epoch_offset} with best val metric {best_val_metric}')
                 resume_success = True
@@ -379,7 +381,7 @@ def main():
             eval_model_path = model_prefix + 'epoch:best_model.pth'
         else:
             eval_model_path = model_prefix +  f'epoch:{config.eval_epoch}_model.pth'
-        best_epoch, best_val_metric = load(algorithm, eval_model_path, config.device)
+        best_epoch, prev_round, best_val_metric = load(algorithm, eval_model_path, config.device)
         if config.eval_epoch is None:
             epoch = best_epoch
         else:
