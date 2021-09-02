@@ -15,7 +15,7 @@ import wilds
 from wilds.common.data_loaders import get_train_loader, get_eval_loader
 from wilds.common.grouper import CombinatorialGrouper
 
-from utils import set_seed, Logger, log_config, ParseKwargs, load, log_group_data, parse_bool, get_model_prefix, configure_split_dict, PseudolabeledSubset, freeze_features
+from utils import set_seed, Logger, log_config, ParseKwargs, load, log_group_data, parse_bool, get_model_prefix, configure_split_dict, freeze_features
 from train import train, evaluate, infer_predictions
 from algorithms.initializer import initialize_algorithm, infer_d_out
 from active import run_active_learning, LabelManager

@@ -239,7 +239,7 @@ def evaluate(algorithm, datasets, epoch, general_logger, config, rnd=None):
 
         # Skip saving train preds, since the train loader generally shuffles the data
         if split != 'train':
-            save_pred_if_needed(y_pred, dataset, epoch, rnd, config, is_best=False, force_save=True)
+            save_pred_if_needed(y_pred, dataset, epoch, rnd, config, is_best=(config.eval_epoch is not None), force_save=True)
 
 def infer_predictions(model, loader, config):
     """
@@ -272,9 +272,8 @@ def log_results(algorithm, dataset, general_logger, epoch, batch_idx):
             general_logger.write(algorithm.get_pretty_log_str())
         algorithm.reset_log()
 
-
 def save_pred_if_needed(y_pred, dataset, epoch, rnd, config, is_best, force_save=False):
-    round_str = f'round:{rnd}_' if config.active_learning else ''
+    round_str = f'round:{rnd}_' if rnd else ''
     if config.save_pred:
         prefix = get_pred_prefix(dataset, config)
         if force_save or (config.save_step is not None and (epoch + 1) % config.save_step == 0):
@@ -286,7 +285,7 @@ def save_pred_if_needed(y_pred, dataset, epoch, rnd, config, is_best, force_save
 
 
 def save_model_if_needed(algorithm, dataset, epoch, rnd, config, is_best, best_val_metric):
-    round_str = f'round:{rnd}_' if config.active_learning else ''
+    round_str = f'round:{rnd}_' if rnd else ''
     prefix = get_model_prefix(dataset, config)
     if config.save_step is not None and (epoch + 1) % config.save_step == 0:
         save_model(algorithm, epoch, rnd, best_val_metric, prefix + f'{round_str}epoch:{epoch}_model.pth')
