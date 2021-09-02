@@ -49,7 +49,6 @@ class SelectionFunction():
         self._prior_selections = [] # loaded selections from file
         self.log_dir = self.config.log_dir
         self.mode = 'w'
-        self.round = 0
 
     # def update(self):
     #     """
@@ -86,7 +85,6 @@ class SelectionFunction():
 
         label_manager.reveal_labels(reveal)
         self.save_selections(reveal)
-        self.round += 1
 
     def select(self, label_manager, K_per_group:[int], unlabeled_indices: torch.Tensor, groups: torch.Tensor, group_ids:[int]):
         """
@@ -103,23 +101,17 @@ class SelectionFunction():
 
     def load_selections(self, path):
         """
-        Loads indices to select in the order specified by saved round:{}_selections.csv
+        Loads indices to select in the order saved in given csv
         """
-        if path.endswith('.csv'): csvpaths = [path]
-        else: csvpaths = glob.glob(f'{path}/round:*_selections.csv')
+        if path.endswith('.csv'): csvpath = path
+        else: csvpath = f'{path}/selections.csv'
 
-        for csvpath in sorted(csvpaths):
-            rnd = int(re.search(r'round:(\d+)', csvpath).group(1))
-            assert rnd > self.round
-            self.round = rnd
-
-            try: df = pd.read_csv(csvpath, index_col=None, header=None)
-            except:
-                print(f"Couldn't find this file of previous selections: {csvpath}.")
-                continue 
+        try: df = pd.read_csv(csvpath, index_col=None, header=None)
+        except:
+            print(f"Couldn't find this file of previous selections: {csvpath}.")
             
-            assert len(df.columns) == 1
-            self._prior_selections.append(df[0].tolist())
+        assert len(df.columns) == 1
+        self._prior_selections.append(df[0].tolist())
         
         print(f"Loaded {len(self._prior_selections)} previous selections")
 
@@ -127,11 +119,9 @@ class SelectionFunction():
         """
         Saves indices of selected points
         """
-        csvpath = f"{self.log_dir}/round:{self.round}_selections.csv"
+        csvpath = f"{self.log_dir}/selections.csv"
         df = pd.DataFrame(indices)
         df.to_csv(csvpath, mode=self.mode, index=False, header=False)
-        # now that we've written, append future rounds
-        self.mode = 'a'
 
 class RandomSampling(SelectionFunction):
     def __init__(self, select_grouper, config):

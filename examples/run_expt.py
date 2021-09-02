@@ -63,9 +63,8 @@ def main():
     parser.add_argument('--upsample_target_labeled', type=parse_bool, const=True, nargs='?', default=False, help="If concatenating source labels, upsample target labels s.t. our labeled batches are 1/2 src and 1/2 tgt.")
     parser.add_argument('--selection_function', choices=supported.selection_functions)
     parser.add_argument('--selection_function_kwargs', nargs='*', action=ParseKwargs, default={}, help="keyword arguments for selection fn passed as key1=value1 key2=value2")
-    parser.add_argument('--n_rounds', type=int, default=1, help="number of times to repeat the selection-train cycle")
     parser.add_argument('--selectby_fields', nargs='+', help="If set, acts like a grouper and n_shots are acquired per selection group (e.g. y x hospital selects K examples per y x hospital).")
-    parser.add_argument('--n_shots', type=int, help="number of shots (labels) to actively acquire each round")
+    parser.add_argument('--n_shots', type=int, help="number of shots (labels) to actively acquire")
     
     # Model
     parser.add_argument('--model', choices=supported.models)
@@ -341,7 +340,7 @@ def main():
                     latest_epoch = max(epochs)
                     save_path = model_prefix + f'epoch:{latest_epoch}_model.pth'
             try:
-                prev_epoch, prev_round, best_val_metric = load(algorithm, save_path, config.device)
+                prev_epoch, best_val_metric = load(algorithm, save_path, config.device)
                 # also load previous selections
                 
                 epoch_offset = prev_epoch + 1
@@ -381,7 +380,7 @@ def main():
             eval_model_path = model_prefix + 'epoch:best_model.pth'
         else:
             eval_model_path = model_prefix +  f'epoch:{config.eval_epoch}_model.pth'
-        best_epoch, prev_round, best_val_metric = load(algorithm, eval_model_path, config.device)
+        best_epoch, best_val_metric = load(algorithm, eval_model_path, config.device)
         if config.eval_epoch is None:
             epoch = best_epoch
         else:
@@ -391,8 +390,7 @@ def main():
             datasets=datasets,
             epoch=epoch,
             general_logger=logger,
-            config=config,
-            rnd=prev_round)
+            config=config)
 
     logger.close()
     for split in datasets:

@@ -101,11 +101,10 @@ def parse_bool(v):
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
-def save_model(algorithm, epoch, rnd, best_val_metric, path):
+def save_model(algorithm, epoch, best_val_metric, path):
     state = {}
     state['algorithm'] = algorithm.state_dict()
     state['epoch'] = epoch
-    state['round'] = rnd
     state['best_val_metric'] = best_val_metric
     torch.save(state, path)
 
@@ -128,9 +127,6 @@ def load(module, path, device=None, tries=2):
     ## edge case: if module is a metalearning model, we want to load the state into self.meta_model.module (l2l artifact)
     if hasattr(module, 'meta_model'): module = module.meta_model.module
 
-    if 'round' in state: prev_round = state['round'] 
-    else: prev_round = None
-
     if 'algorithm' in state:
         prev_epoch = state['epoch']
         best_val_metric = state['best_val_metric']
@@ -150,7 +146,7 @@ def load(module, path, device=None, tries=2):
             if len(leftover_state) == 0 or len(leftover_module_keys) == 0: break
             state, module_keys = leftover_state, leftover_module_keys
         if len(module_keys-state.keys()) > 0: print(f"Some module parameters could not be found in the loaded state: {module_keys-state.keys()}")
-    return prev_epoch, prev_round, best_val_metric
+    return prev_epoch, best_val_metric
 
 def match_keys(d, ref):
     """
@@ -381,7 +377,7 @@ def get_model_prefix(dataset, config):
     replicate_str = get_replicate_str(dataset, config)
     prefix = os.path.join(
         config.log_dir,
-        f"{dataset_name}_{replicate_str}_round:0_")
+        f"{dataset_name}_{replicate_str}_")
     return prefix
 
 def get_indices(reference, values):
