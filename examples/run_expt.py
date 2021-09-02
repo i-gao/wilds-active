@@ -344,7 +344,8 @@ def main():
                 # also load previous selections
                 
                 epoch_offset = prev_epoch + 1
-                logger.write(f'Resuming from epoch {epoch_offset} with best val metric {best_val_metric}')
+                config.selection_function_kwargs['load_selection_path'] = config.log_dir
+                logger.write(f'Resuming from epoch {epoch_offset} with best val metric {best_val_metric}\n')
                 resume_success = True
             except FileNotFoundError:
                 pass
@@ -366,6 +367,8 @@ def main():
                 general_logger=logger,
                 grouper=train_grouper,
                 config=config,
+                epoch_offset=epoch_offset,
+                best_val_metric=best_val_metric,
                 full_dataset=full_dataset)
         else: 
             train(

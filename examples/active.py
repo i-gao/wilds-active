@@ -101,7 +101,7 @@ class LabelManager:
     def labeled_y_array(self):
         return self.get_labeled_subset().y_array
         
-def run_active_learning(selection_fn, algorithm, datasets, general_logger, grouper, config, full_dataset=None):
+def run_active_learning(selection_fn, algorithm, datasets, general_logger, grouper, config, epoch_offset, best_val_metric, full_dataset=None):
     label_manager = datasets[config.target_split]['label_manager']
 
     # Add labeled test / unlabeled test splits.
@@ -191,6 +191,6 @@ def run_active_learning(selection_fn, algorithm, datasets, general_logger, group
         unlabeled_split=f"unlabeled_{config.target_split}_shuffled",
         general_logger=general_logger,
         config=config,
-        epoch_offset=0,
-        best_val_metric=None)
+        epoch_offset=epoch_offset,
+        best_val_metric=best_val_metric)
 

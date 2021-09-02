@@ -111,7 +111,7 @@ class SelectionFunction():
             print(f"Couldn't find this file of previous selections: {csvpath}.")
             
         assert len(df.columns) == 1
-        self._prior_selections.append(df[0].tolist())
+        self._prior_selections = self._prior_selections + df[0].tolist()
         
         print(f"Loaded {len(self._prior_selections)} previous selections")
 
