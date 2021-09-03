@@ -112,12 +112,14 @@ def run_epoch(algorithm, dataset, general_logger, epoch, config, train, unlabele
     # so we manually increment batch_idx
     batch_idx = 0
     for batch in batches:
-        algorithm_fn = algorithm.update if train else algorithm.evaluate
-        if unlabeled_dataset:
-            labeled_batch, unlabeled_batch = batch
-            batch_results = algorithm_fn(labeled_batch, unlabeled_batch)
+        if train:
+            if unlabeled_dataset:
+                labeled_batch, unlabeled_batch = batch
+                batch_results = algorithm.update(labeled_batch, unlabeled_batch)
+            else:
+                batch_results = algorithm.update(batch)
         else:
-            batch_results = algorithm_fn(batch)
+            batch_results = algorithm.evaluate(batch)
 
         # These tensors are already detached, but we need to clone them again
         # Otherwise they don't get garbage collected properly in some versions
@@ -129,8 +131,7 @@ def run_epoch(algorithm, dataset, general_logger, epoch, config, train, unlabele
             y_pred = process_outputs_functions[config.process_outputs_function](y_pred)
         epoch_y_pred.append(y_pred)
         epoch_metadata.append(batch_results['metadata'].clone().detach())
-        if 'unlabeled_y_pseudo' in batch_results: 
-            epoch_y_pseudo.append(batch_results['unlabeled_y_pseudo'].clone().detach())
+        if 'unlabeled_y_pseudo' in batch_results: epoch_y_pseudo.append(batch_results['unlabeled_y_pseudo'].clone().detach())
         
         if general_logger and train and (batch_idx+1) % config.log_every==0:
             log_results(algorithm, dataset, general_logger, epoch, batch_idx)
@@ -179,7 +180,7 @@ def train(algorithm, datasets, general_logger, config, epoch_offset, best_val_me
             is_best = False # only save last
             best_val_metric = None
         else:
-            val_results, y_pred, _ = epoch_fn(algorithm, datasets[val_split], general_logger, epoch, config, train=False)
+            val_results, y_pred = epoch_fn(algorithm, datasets[val_split], general_logger, epoch, config, train=False)
             curr_val_metric = val_results[config.val_metric]
             general_logger.write(f'Validation {config.val_metric}: {curr_val_metric:.3f}\n')
 
@@ -205,18 +206,9 @@ def train(algorithm, datasets, general_logger, config, epoch_offset, best_val_me
             additional_splits = config.eval_splits
         if epoch % config.eval_additional_every == 0 or epoch+1 == config.n_epochs:
             for split in additional_splits:
-                import pdb
-                pdb.set_trace()
-                _, y_pred, y_pseudo = epoch_fn(
-                    algorithm, 
-                    datasets[split], 
-                    general_logger, 
-                    epoch, 
-                    config, 
-                    train=False, 
-                    unlabeled_dataset=(datasets[split] if split.startswith('unlabeled') else None))
+                _, y_pred, y_pseudo = epoch_fn(algorithm, datasets[split], general_logger, epoch, config, train=False)
                 save_pred_if_needed(y_pred, datasets[split], epoch, config, is_best)
-                save_pseudo_if_needed(y_pseudo, datasets[split], epoch, config, is_best)
+                save_pseudo_if_needed(y_pseudo, datasets[split], epoch, config, is_best) # check if available, pull from datasets[split].pseudolabel_array for NS or concat for PL/FM
 
         general_logger.write('\n')
 
@@ -301,9 +293,6 @@ def save_pseudo_if_needed(y_pseudo, dataset, epoch, config, is_best, force_save=
     if (not config.save_pseudo) or (y_pseudo is None):
         return
     prefix = get_pred_prefix(dataset, config)
-
-    print(">>>>>>>>HELLLO", prefix, y_pseudo is None)
-
     if config.algorithm == 'NoisyStudent': # save on first epoch; pseudolabels are constant
         if epoch == 0: save_pred(y_pseudo, prefix + f'_pseudo.csv')
     else: 
