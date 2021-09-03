@@ -13,28 +13,11 @@ from algorithms.algorithm import Algorithm
 
 from collections import defaultdict
 from wilds.common.data_loaders import get_train_loader, get_eval_loader
-from wilds.datasets.wilds_dataset import WILDSSubset
 
 try:
     import wandb
 except Exception as e:
     pass
-
-class PseudolabeledSubset(WILDSSubset):
-    """Pseudolabeled subset initialized from a labeled subset"""
-    def __init__(self, reference_subset, pseudolabels):
-        assert len(reference_subset) == len(pseudolabels)
-        self.pseudolabels = pseudolabels
-        super().__init__(
-            reference_subset.dataset, reference_subset.indices, reference_subset.transform
-        )
-
-    def __getitem__(self, idx):
-        x, y_true, metadata = self.dataset[self.indices[idx]]
-        y_pseudo = self.pseudolabels[idx]
-        if self.transform is not None:
-            x = self.transform(x)
-        return x, y_pseudo, y_true, metadata
 
 def accuracy(pred, target, process_outputs_function):
     assert len(pred) == len(target)

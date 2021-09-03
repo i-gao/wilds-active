@@ -4,7 +4,22 @@ Functions that modify specific WILDSDatasets from the WILDS package due to our l
 from wilds.datasets.wilds_dataset import WILDSSubset
 import torch
 import numpy as np
-from utils import PseudolabeledSubset
+
+class PseudolabeledSubset(WILDSSubset):
+    """Pseudolabeled subset initialized from a labeled subset"""
+    def __init__(self, reference_subset, pseudolabels):
+        assert len(reference_subset) == len(pseudolabels)
+        self.pseudolabels = pseudolabels
+        super().__init__(
+            reference_subset.dataset, reference_subset.indices, reference_subset.transform
+        )
+
+    def __getitem__(self, idx):
+        x, y_true, metadata = self.dataset[self.indices[idx]]
+        y_pseudo = self.pseudolabels[idx]
+        if self.transform is not None:
+            x = self.transform(x)
+        return x, y_pseudo, y_true, metadata
 
 class LabelManager:
     """
@@ -97,7 +112,6 @@ class LabelManager:
     @property
     def labeled_y_array(self):
         return self.get_labeled_subset().y_array
-
 
 def add_split_to_wilds_dataset_metadata_array(full_dataset):
     """
