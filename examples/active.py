@@ -3,7 +3,7 @@ from wilds.common.grouper import CombinatorialGrouper
 import torch
 from torch.utils.data import Subset
 import numpy as np
-from utils import configure_split_dict, configure_loaders, get_indices, PseudolabeledSubset
+from utils import configure_split_dict, configure_loaders, PseudolabeledSubset
 from train import train
 from copy import copy
 

@@ -379,12 +379,3 @@ def get_model_prefix(dataset, config):
         config.log_dir,
         f"{dataset_name}_{replicate_str}_")
     return prefix
-
-def get_indices(reference, values):
-    """
-    get the first index of each value in values wrt reference, -1 if not found
-    assumes all values in values are in reference
-    """
-    assert set(values).issubset(set(reference))
-    sorter = np.argsort(reference)
-    return sorter[np.searchsorted(reference, values, sorter=sorter)]
