@@ -131,7 +131,7 @@ def run_active_learning(selection_fn, datasets, grouper, config, general_logger,
     
     # First run selection function
     selection_fn.select_and_reveal(label_manager=label_manager, K=config.n_shots)
-    general_logger.write(f"Total Labels Revealed: {label_manager.num_labeled}")
+    general_logger.write(f"Total Labels Revealed: {label_manager.num_labeled}\n")
     
     # Concatenate labeled source examples to labeled target examples
     if config.concat_source_labeled:
