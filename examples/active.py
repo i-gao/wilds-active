@@ -3,6 +3,7 @@ from wilds.common.grouper import CombinatorialGrouper
 import torch
 import numpy as np
 from utils import configure_split_dict, configure_loaders
+from dataset_modifications import fmow_deduplicate_locations
 from copy import copy
         
 def run_active_learning(selection_fn, datasets, grouper, config, general_logger, full_dataset=None):
@@ -79,12 +80,32 @@ def run_active_learning(selection_fn, datasets, grouper, config, general_logger,
         config=config)
     configure_loaders( # for eval
         split_dict=datasets[f'unlabeled_{config.target_split}'],
-        data=label_manager.get_unlabeled_subset(),
+        data=label_manager.get_unlabeled_subset(train=False),
         train=False,
         grouper=None,
         batch_size=config.batch_size,
         config=config)
     
+    # Special de-duplicated eval set for fmow
+    if config.dataset == 'fmow':
+        disjoint_unlabeled_indices = fmow_deduplicate_locations(
+            negative_indices=label_manager.labeled_indices, 
+            superset_indices=label_manager.unlabeled_indices, 
+            config=config)
+        disjoint_eval_dataset = WILDSSubset(
+            full_dataset,
+            disjoint_unlabeled_indices,
+            label_manager.eval_transform
+        )
+        datasets[f'unlabeled_{config.target_split}_disjoint'] = configure_split_dict( # for eval
+            data=disjoint_eval_dataset,
+            split=f'unlabeled_{config.target_split}_disjoint',
+            split_name=f'unlabeled_{config.target_split}_disjoint',
+            train=False,
+            grouper=None,
+            verbose=True,
+            config=config)
+
     # return names of train_split, unlabeled_split
     return labeled_split_name, f"unlabeled_{config.target_split}_shuffled"
 

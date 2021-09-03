@@ -4,6 +4,7 @@ Functions that modify specific WILDSDatasets from the WILDS package due to our l
 from wilds.datasets.wilds_dataset import WILDSSubset
 import torch
 import numpy as np
+import pandas as pd
 
 class PseudolabeledSubset(WILDSSubset):
     """Pseudolabeled subset initialized from a labeled subset"""
@@ -127,3 +128,18 @@ def add_split_to_wilds_dataset_metadata_array(full_dataset):
         split_array,
     ), dim=1) # add split as a metadata column
     full_dataset._metadata_fields.append('split')
+
+def fmow_deduplicate_locations(negative_indices: [int], superset_indices: [int], config):
+    """
+    Given two lists of example indices, produce a subset of superset_indices with a disjoint location from examples in negative_indices
+    i.e. the result is a subset of superset_indices and disjoint from negative_indices
+    """
+    raw_metadata = pd.read_csv(f'{config.root_dir}/fmow_v1.1/rgb_metadata.csv')
+    raw_metadata['id'] = raw_metadata.index
+    raw_metadata['loc'] = list(zip(raw_metadata['lat'], raw_metadata['lon']))
+
+    superset = raw_metadata[raw_metadata['id'].isin(superset_indices)]
+    negative = raw_metadata[raw_metadata['id'].isin(negative_indices)]
+    disjoint = superset[~superset['loc'].isin(negative['loc'])]
+
+    return disjoint['id'].to_numpy().tolist() 
