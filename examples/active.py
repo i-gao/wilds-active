@@ -2,7 +2,7 @@ from wilds.datasets.wilds_dataset import WILDSSubset
 from wilds.common.grouper import CombinatorialGrouper
 import torch
 import numpy as np
-from utils import configure_split_dict, configure_loaders
+from utils import configure_split_dict
 from dataset_modifications import fmow_deduplicate_locations
 from copy import copy
 from train import save_pseudo_if_needed
@@ -42,32 +42,35 @@ def run_active_learning(selection_fn, datasets, grouper, config, general_logger,
         labeled_grouper = grouper
 
     # Add new splits to datasets dict
-    ## Labeled test (for training)
+    ## Training Splits
+    ### Labeled test
     datasets[labeled_split_name] = configure_split_dict(
         data=labeled_dataset,
         split=labeled_split_name,
         split_name=labeled_split_name,
-        train=True,
+        get_train=True,
         verbose=True,
         grouper=labeled_grouper,
         batch_size=config.batch_size,
         config=labeled_config)
-    ## Unlabeled test (for training)
-    datasets[f'unlabeled_{config.target_split}_shuffled'] = configure_split_dict(
+    ### Unlabeled test
+    datasets[f'unlabeled_{config.target_split}_augmented'] = configure_split_dict(
         data=label_manager.get_unlabeled_subset(train=True),
-        split=f"unlabeled_{config.target_split}_shuffled",
-        split_name=f"unlabeled_{config.target_split}_shuffled",
-        train=True,
+        split=f"unlabeled_{config.target_split}_augmented",
+        split_name=f"unlabeled_{config.target_split}_augmented",
+        get_train=True,
+        get_eval=True,
         grouper=grouper,
         batch_size=config.unlabeled_batch_size,
         verbose=True,
         config=config)
-    ## Unlabeled test (for eval)
+    ## Eval Splits
+    ### Unlabeled test, eval transform
     datasets[f'unlabeled_{config.target_split}'] = configure_split_dict(
         data=label_manager.get_unlabeled_subset(train=False, return_pseudolabels=False),
         split=f"unlabeled_{config.target_split}",
         split_name=f"unlabeled_{config.target_split}",
-        train=False,
+        get_eval=True,
         grouper=None,
         verbose=True,
         batch_size=config.unlabeled_batch_size,
@@ -88,7 +91,7 @@ def run_active_learning(selection_fn, datasets, grouper, config, general_logger,
             data=disjoint_eval_dataset,
             split=f'unlabeled_{config.target_split}_disjoint',
             split_name=f'unlabeled_{config.target_split}_disjoint',
-            train=False,
+            get_eval=True,
             grouper=None,
             verbose=True,
             batch_size=config.unlabeled_batch_size,
@@ -104,5 +107,5 @@ def run_active_learning(selection_fn, datasets, grouper, config, general_logger,
                 None, config, None)
 
     # return names of train_split, unlabeled_split
-    return labeled_split_name, f"unlabeled_{config.target_split}_shuffled"
+    return labeled_split_name, f"unlabeled_{config.target_split}_augmented"
 

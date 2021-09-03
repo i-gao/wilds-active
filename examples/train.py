@@ -29,7 +29,7 @@ def run_metalearning_epoch(algorithm, dataset, general_logger, epoch, config, tr
             algorithm.adapt_task(adaptation_batch, evaluation_batch)
     
     # finetune and then evaluate
-    adapt_data = labeled_set['loader'] if labeled_set else dataset['loader']
+    adapt_data = labeled_set['train_loader'] if labeled_set else dataset['train_loader']
     # need to convert adapt_data -> tensor
     _, adaptation_batch, _ = sample_metalearning_task(
         K=config.metalearning_k,
@@ -42,7 +42,7 @@ def run_metalearning_epoch(algorithm, dataset, general_logger, epoch, config, tr
     _, adaptation_batch_groups = algorithm.grouper.metadata_to_group(adaptation_batch[2]).unique(return_counts=True)# TODO: remove
     general_logger.write(f'Sampled for evaluation batch with groups {adaptation_batch_groups}\n') # TODO: remove
 
-    epoch_results = algorithm.evaluate(adaptation_batch, dataset['loader']) 
+    epoch_results = algorithm.evaluate(adaptation_batch, dataset['eval_loader']) 
     
     epoch_y_pred = epoch_results['y_pred'].clone().detach()
     if config.process_outputs_function is not None:
@@ -76,8 +76,10 @@ def run_epoch(algorithm, dataset, general_logger, epoch, config, train, unlabele
 
     if train:
         algorithm.train()
+        loader_name = 'train_loader'
     else:
         algorithm.eval()
+        loader_name = 'eval_loader'
 
     # Not preallocating memory is slower
     # but makes it easier to handle different types of data loaders
@@ -88,9 +90,9 @@ def run_epoch(algorithm, dataset, general_logger, epoch, config, train, unlabele
     epoch_metadata = []
 
     # Assert that data loaders are defined for the datasets
-    assert 'loader' in dataset, "A data loader must be defined for the dataset."
+    assert loader_name in dataset, "A data loader must be defined for the dataset."
     if unlabeled_dataset:
-        assert 'loader' in unlabeled_dataset, "A data loader must be defined for the dataset."
+        assert loader_name in unlabeled_dataset, "A data loader must be defined for the dataset."
     
     ## if itertools.cycle is the issue, here's a loop to fix it
     def cycle(iterable):
@@ -102,8 +104,8 @@ def run_epoch(algorithm, dataset, general_logger, epoch, config, train, unlabele
                 iterator = iter(iterable)
 
     batches = (
-        zip(cycle(dataset['loader']), unlabeled_dataset['loader']) if unlabeled_dataset
-        else dataset['loader']
+        zip(cycle(dataset[loader_name]), unlabeled_dataset[loader_name]) if unlabeled_dataset
+        else dataset[loader_name]
     )
     if config.progress_bar:
         batches = tqdm(batches)
@@ -112,14 +114,12 @@ def run_epoch(algorithm, dataset, general_logger, epoch, config, train, unlabele
     # so we manually increment batch_idx
     batch_idx = 0
     for batch in batches:
-        if train:
-            if unlabeled_dataset:
-                labeled_batch, unlabeled_batch = batch
-                batch_results = algorithm.update(labeled_batch, unlabeled_batch)
-            else:
-                batch_results = algorithm.update(batch)
+        algo_fn = algorithm.update if train else algorithm.evaluate
+        if unlabeled_dataset:
+            labeled_batch, unlabeled_batch = batch
+            batch_results = algo_fn(labeled_batch, unlabeled_batch)
         else:
-            batch_results = algorithm.evaluate(batch)
+            batch_results = algo_fn(batch)
 
         # These tensors are already detached, but we need to clone them again
         # Otherwise they don't get garbage collected properly in some versions
@@ -200,13 +200,16 @@ def train(algorithm, datasets, general_logger, config, epoch_offset, best_val_me
         # Then run everything else
         if config.evaluate_all_splits:
             additional_splits = [
-                split for split in datasets.keys() if split not in ['train','val',f'labeled_{config.target_split}',f'unlabeled_{config.target_split}_shuffled']
+                split for split in datasets.keys() if split not in ['train','val',f'labeled_{config.target_split}',f'unlabeled_{config.target_split}_augmented']
             ]
         else:
             additional_splits = config.eval_splits
         if epoch % config.eval_additional_every == 0 or epoch+1 == config.n_epochs:
             for split in additional_splits:
-                _, y_pred, y_pseudo = epoch_fn(algorithm, datasets[split], general_logger, epoch, config, train=False)
+                if split == f'unlabeled_{config.target_split}' and config.algorithm != 'NoisyStudent':
+                    _, y_pred, y_pseudo = epoch_fn(algorithm, datasets[split], general_logger, epoch, config, train=False, unlabeled_dataset=datasets[f'unlabeled_{config.target_split}_augmented'])
+                else:
+                    _, y_pred, y_pseudo = epoch_fn(algorithm, datasets[split], general_logger, epoch, config, train=False)
                 save_pred_if_needed(y_pred, datasets[split], epoch, config, is_best)
                 save_pseudo_if_needed(y_pseudo, datasets[split], epoch, config, is_best)
         general_logger.write('\n')
@@ -220,7 +223,7 @@ def evaluate(algorithm, datasets, epoch, general_logger, config):
         epoch_y_true = []
         epoch_y_pred = []
         epoch_metadata = []
-        iterator = tqdm(dataset['loader']) if config.progress_bar else dataset['loader']
+        iterator = tqdm(dataset['eval_loader']) if config.progress_bar else dataset['eval_loader']
         for batch in iterator:
             batch_results = algorithm.evaluate(batch)
             epoch_y_true.append(batch_results['y_true'].clone().detach())

@@ -282,18 +282,27 @@ def initialize_wandb(config):
                project=f"wilds")
     wandb.config.update(config)
 
-def configure_split_dict(split, data, split_name, train, verbose, grouper, batch_size, config):
+def configure_split_dict(split, data, split_name, verbose, grouper, batch_size, config, get_train=False, get_eval=False):
     split_dict = defaultdict(dict)
 
     # Loaders and dict
     if data is not None: 
-        configure_loaders(
-            split_dict=split_dict,
-            data=data,
-            train=train,
+        split_dict['dataset'] = data
+        if get_train: split_dict['train_loader'] = get_train_loader(
+            loader=config.train_loader,
+            dataset=split_dict['dataset'],
+            batch_size=batch_size,
+            uniform_over_groups=config.uniform_over_groups,
+            grouper=grouper,
+            distinct_groups=config.distinct_groups,
+            n_groups_per_batch=config.n_groups_per_batch,
+            **config.loader_kwargs)
+        if get_eval: split_dict['eval_loader'] = get_eval_loader(
+            loader=config.eval_loader,
+            dataset=split_dict['dataset'],
             grouper=grouper,
             batch_size=batch_size,
-            config=config)
+            **config.loader_kwargs)
 
     # Set fields
     split_dict['split'] = split
@@ -306,34 +315,6 @@ def configure_split_dict(split, data, split_name, train, verbose, grouper, batch
     split_dict['algo_logger'] = BatchLogger(
         os.path.join(config.log_dir, f'{split}_algo.csv'), mode=config.mode, use_wandb=(config.use_wandb and verbose))
     return split_dict
-
-
-def configure_loaders(split_dict, data, batch_size, config, train=False, grouper=None):
-    """
-    modifies split_dict ['dataset'] and ['loader'] keys in place
-    Args:
-        - data is expected to be a WILDSSubset
-        - train is a boolean explaining whether this data will be trained on 
-          (e.g. labeled-test is from the test split but trained on)
-    """
-    split_dict['dataset'] = data
-    if train:
-        split_dict['loader'] = get_train_loader(
-            loader=config.train_loader,
-            dataset=split_dict['dataset'],
-            batch_size=batch_size,
-            uniform_over_groups=config.uniform_over_groups,
-            grouper=grouper,
-            distinct_groups=config.distinct_groups,
-            n_groups_per_batch=config.n_groups_per_batch,
-            **config.loader_kwargs)
-    else:
-        split_dict['loader'] = get_eval_loader(
-            loader=config.eval_loader,
-            dataset=split_dict['dataset'],
-            grouper=grouper,
-            batch_size=batch_size,
-            **config.loader_kwargs)
 
 def save_pred(y_pred, csv_path):
     df = pd.DataFrame(y_pred.numpy())

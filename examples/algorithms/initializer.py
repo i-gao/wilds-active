@@ -13,7 +13,7 @@ from configs.supported import algo_log_metrics, losses
 
 def initialize_algorithm(config, datasets, train_grouper, unlabeled_dataset=None):
     train_dataset = datasets['train']['dataset']
-    train_loader = datasets['train']['loader']
+    train_loader = datasets['train']['train_loader']
     d_out = infer_d_out(train_dataset)
 
     # Other config
