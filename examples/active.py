@@ -5,6 +5,7 @@ import numpy as np
 from utils import configure_split_dict, configure_loaders
 from dataset_modifications import fmow_deduplicate_locations
 from copy import copy
+from train import save_pseudo_if_needed
         
 def run_active_learning(selection_fn, datasets, grouper, config, general_logger, full_dataset=None):
     label_manager = datasets[config.target_split]['label_manager']
@@ -92,6 +93,10 @@ def run_active_learning(selection_fn, datasets, grouper, config, general_logger,
             verbose=True,
             batch_size=config.unlabeled_batch_size,
             config=config)
+
+    # Save NoisyStudent pseudolabels initially
+    if config.algorithm == 'NoisyStudent':
+        save_pseudo_if_needed(label_manager.unlabeled_pseudolabel_array, datasets[f'unlabeled_{config.target_split}'], None, config, None)
 
     # return names of train_split, unlabeled_split
     return labeled_split_name, f"unlabeled_{config.target_split}_shuffled"

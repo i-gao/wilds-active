@@ -109,7 +109,7 @@ class LabelManager:
     @property
     def unlabeled_pseudolabel_array(self):
         if self._pseudolabels is not None:
-            return [self._pseudolabels[self._idx_to_pos[i]] for i in self.unlabeled_indices]
+            return torch.tensor([self._pseudolabels[self._idx_to_pos[i]] for i in self.unlabeled_indices])
         else:
             raise Exception("No pseudolabels were provided to the label maanger.")
     

@@ -293,7 +293,7 @@ def save_pseudo_if_needed(y_pseudo, dataset, epoch, config, is_best, force_save=
         return
     prefix = get_pred_prefix(dataset, config)
     if config.algorithm == 'NoisyStudent': # save on first epoch; pseudolabels are constant
-        if epoch == 0: save_pred(y_pseudo, prefix + f'_pseudo.csv')
+        save_pred(y_pseudo, prefix + f'_pseudo.csv')
     else: 
         if force_save or (config.save_step is not None and (epoch + 1) % config.save_step == 0):
             save_pred(y_pseudo, prefix + f'epoch:{epoch}_pseudo.csv')
