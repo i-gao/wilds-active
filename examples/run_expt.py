@@ -310,6 +310,7 @@ def main():
         config=config,
         datasets=datasets,
         train_grouper=train_grouper)
+    if config.freeze_featurizer: freeze_features(algorithm)
 
     # Load pretrained weights if specified (this can be overriden by resume)
     if config.pretrained_model_path is not None and os.path.exists(config.pretrained_model_path):
@@ -324,6 +325,12 @@ def main():
             )
         except:
             pass
+
+    if config.active_learning:
+        select_grouper = CombinatorialGrouper(
+            dataset=full_dataset,
+            groupby_fields=config.selectby_fields)
+        selection_fn = initialize_selection_function(config, algorithm, select_grouper, algo_grouper=train_grouper)
 
     # Resume from most recent model in log_dir
     model_prefix = get_model_prefix(datasets['train'], config)
@@ -355,29 +362,28 @@ def main():
             best_val_metric=None
 
         if config.active_learning:
-            if config.freeze_featurizer: freeze_features(algorithm)
-            select_grouper = CombinatorialGrouper(
-                dataset=full_dataset,
-                groupby_fields=config.selectby_fields)
-            selection_fn = initialize_selection_function(config, algorithm, select_grouper, algo_grouper=train_grouper)
-            run_active_learning(
+            # create new labeled/unlabeled test splits
+            train_split, unlabeled_split = run_active_learning(
                 selection_fn=selection_fn,
-                algorithm=algorithm,
                 datasets=datasets,
-                general_logger=logger,
                 grouper=train_grouper,
                 config=config,
-                epoch_offset=epoch_offset,
-                best_val_metric=best_val_metric,
                 full_dataset=full_dataset)
-        else: 
-            train(
-                algorithm=algorithm,
-                datasets=datasets,
-                general_logger=logger,
-                config=config,
-                epoch_offset=epoch_offset,
-                best_val_metric=best_val_metric)
+        else:
+            train_split = "train"
+            unlabeled_split = None
+
+        train(
+            algorithm=algorithm,
+            datasets=datasets,
+            train_split=train_split,
+            val_split="val",
+            unlabeled_split=unlabeled_split,
+            general_logger=logger,
+            config=config,
+            epoch_offset=epoch_offset,
+            best_val_metric=best_val_metric) 
+
     else:
         if config.eval_epoch is None:
             eval_model_path = model_prefix + 'epoch:best_model.pth'
@@ -388,6 +394,17 @@ def main():
             epoch = best_epoch
         else:
             epoch = config.eval_epoch
+
+        if config.active_learning:
+            # create new labeled/unlabeled test splits
+            config.selection_function_kwargs['load_selection_path'] = config.log_dir
+            run_active_learning(
+                selection_fn=selection_fn,
+                datasets=datasets,
+                grouper=train_grouper,
+                config=config,
+                full_dataset=full_dataset)
+
         evaluate(
             algorithm=algorithm,
             datasets=datasets,
