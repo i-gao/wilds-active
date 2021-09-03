@@ -180,7 +180,7 @@ def train(algorithm, datasets, general_logger, config, epoch_offset, best_val_me
             is_best = False # only save last
             best_val_metric = None
         else:
-            val_results, y_pred = epoch_fn(algorithm, datasets[val_split], general_logger, epoch, config, train=False)
+            val_results, y_pred, _ = epoch_fn(algorithm, datasets[val_split], general_logger, epoch, config, train=False)
             curr_val_metric = val_results[config.val_metric]
             general_logger.write(f'Validation {config.val_metric}: {curr_val_metric:.3f}\n')
 
@@ -208,8 +208,7 @@ def train(algorithm, datasets, general_logger, config, epoch_offset, best_val_me
             for split in additional_splits:
                 _, y_pred, y_pseudo = epoch_fn(algorithm, datasets[split], general_logger, epoch, config, train=False)
                 save_pred_if_needed(y_pred, datasets[split], epoch, config, is_best)
-                save_pseudo_if_needed(y_pseudo, datasets[split], epoch, config, is_best) # check if available, pull from datasets[split].pseudolabel_array for NS or concat for PL/FM
-
+                save_pseudo_if_needed(y_pseudo, datasets[split], epoch, config, is_best)
         general_logger.write('\n')
 
 
