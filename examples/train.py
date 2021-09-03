@@ -227,10 +227,13 @@ def evaluate(algorithm, datasets, epoch, general_logger, config):
             epoch_y_pred.append(y_pred)
             epoch_metadata.append(batch_results['metadata'].clone().detach())
 
+        epoch_y_pred = torch.cat(epoch_y_pred)
+        epoch_y_true = torch.cat(epoch_y_true)
+        epoch_metadata = torch.cat(epoch_metadata)
         results, results_str = dataset['dataset'].eval(
-            torch.cat(epoch_y_pred),
-            torch.cat(epoch_y_true),
-            torch.cat(epoch_metadata))
+            epoch_y_pred,
+            epoch_y_true,
+            epoch_metadata)
 
         results['epoch'] = epoch
         dataset['eval_logger'].log(results)
@@ -239,7 +242,7 @@ def evaluate(algorithm, datasets, epoch, general_logger, config):
 
         # Skip saving train preds, since the train loader generally shuffles the data
         if split != 'train':
-            save_pred_if_needed(y_pred, dataset, epoch, config, is_best=(config.eval_epoch is None), force_save=True)
+            save_pred_if_needed(epoch_y_pred, dataset, epoch, config, is_best=(config.eval_epoch is None), force_save=True)
 
 def infer_predictions(model, loader, config):
     """
