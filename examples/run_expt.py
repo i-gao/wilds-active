@@ -368,6 +368,7 @@ def main():
                 datasets=datasets,
                 grouper=train_grouper,
                 config=config,
+                general_logger=logger,
                 full_dataset=full_dataset)
         else:
             train_split = "train"
@@ -403,6 +404,7 @@ def main():
                 datasets=datasets,
                 grouper=train_grouper,
                 config=config,
+                general_logger=logger,
                 full_dataset=full_dataset)
 
         evaluate(

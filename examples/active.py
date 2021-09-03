@@ -51,7 +51,6 @@ class LabelManager:
         if len(set(idx).intersection(self._idx_labels_revealed)): 
             raise ValueError('Some indices have already been selected.')
         self._idx_labels_revealed.update(idx)
-        if self.verbose: print(f"Total Labels Revealed: {len(self._idx_labels_revealed)}")
 
     def hide_labels(self, idx: [int]):
         """Unremembers revealed example labels, undoing reveal_labels()"""
@@ -60,7 +59,6 @@ class LabelManager:
         if not (set(idx).issubset(self._idx_labels_revealed)):
             raise ValueError('Some indices were never revealed.')
         self._idx_labels_revealed = self._idx_labels_revealed - set(idx)
-        if self.verbose: print(f"Total Labels Revealed: {len(self._idx_labels_revealed)}")
 
     @property
     def num_labeled(self):
@@ -101,7 +99,7 @@ class LabelManager:
     def labeled_y_array(self):
         return self.get_labeled_subset().y_array
         
-def run_active_learning(selection_fn, datasets, grouper, config, full_dataset=None):
+def run_active_learning(selection_fn, datasets, grouper, config, general_logger, full_dataset=None):
     label_manager = datasets[config.target_split]['label_manager']
 
     # Add labeled test / unlabeled test splits.
@@ -133,6 +131,7 @@ def run_active_learning(selection_fn, datasets, grouper, config, full_dataset=No
     
     # First run selection function
     selection_fn.select_and_reveal(label_manager=label_manager, K=config.n_shots)
+    general_logger.write(f"Total Labels Revealed: {label_manager.num_labeled}")
     
     # Concatenate labeled source examples to labeled target examples
     if config.concat_source_labeled:
