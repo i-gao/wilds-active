@@ -18,7 +18,8 @@ from wilds.common.grouper import CombinatorialGrouper
 from utils import set_seed, Logger, log_config, ParseKwargs, load, log_group_data, parse_bool, get_model_prefix, configure_split_dict, freeze_features
 from train import train, evaluate, infer_predictions
 from algorithms.initializer import initialize_algorithm, infer_d_out
-from active import run_active_learning, LabelManager
+from active import run_active_learning
+from dataset_modifications import LabelManager, add_split_to_wilds_dataset_metadata_array
 from selection_fn import initialize_selection_function
 from models.initializer import initialize_model
 from transforms import initialize_transform
@@ -202,14 +203,7 @@ def main():
     # In this project, we sometimes train on batches of mixed splits, e.g. some train labeled examples and test labeled examples
     # Within each batch, we may want to sample uniformly across split, or log the train v. test label balance
     # To facilitate this, we'll hack the WILDS dataset to include each point's split in the metadata array
-    UNUSED_SPLIT = 10 # this doesn't overlap with any real split values in WILDS
-    split_array = torch.tensor(full_dataset.split_array).unsqueeze(1) 
-    split_array[split_array < 0] = UNUSED_SPLIT # unused data is given a split of -1, but the grouper can only accept nonnegative values
-    full_dataset._metadata_array = torch.cat((
-        full_dataset.metadata_array, 
-        split_array,
-    ), dim=1) # add split as a metadata column
-    full_dataset._metadata_fields.append('split')
+    add_split_to_wilds_dataset_metadata_array(full_dataset)
 
     # To implement data augmentation (i.e., have different transforms
     # at training time vs. test time), modify these two lines:
