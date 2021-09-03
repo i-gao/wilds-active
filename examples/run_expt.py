@@ -256,6 +256,7 @@ def main():
             train=(split=='train'),
             verbose=verbose,
             grouper=train_grouper,
+            batch_size=config.batch_size,
             config=config)
         
         pseudolabels = None

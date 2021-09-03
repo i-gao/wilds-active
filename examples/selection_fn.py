@@ -293,6 +293,7 @@ class MStepLookahead(SelectionFunction):
             train=True,
             verbose=False,
             grouper=self.grouper,
+            batch_size=self.config.batch_size,
             config=self.config)
         unlabeled_dict = configure_split_dict(
             data=label_manager.get_unlabeled_subset(),
@@ -301,6 +302,7 @@ class MStepLookahead(SelectionFunction):
             train=False,
             grouper=None,
             verbose=False,
+            batch_size=self.config.unlabeled_batch_size,
             config=self.config)
         temp_model = copy.deepcopy(self.uncertainty_model)
         temp_model.train()

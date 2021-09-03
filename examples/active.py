@@ -11,30 +11,6 @@ def run_active_learning(selection_fn, datasets, grouper, config, general_logger,
 
     # Add labeled test / unlabeled test splits.
     labeled_split_name = f"labeled_{config.target_split}_joint" if config.concat_source_labeled else f"labeled_{config.target_split}"
-    datasets[labeled_split_name] = configure_split_dict( # labeled for training
-        data=None,
-        split=labeled_split_name,
-        split_name=labeled_split_name,
-        train=True,
-        verbose=True,
-        grouper=grouper,
-        config=config)
-    datasets[f'unlabeled_{config.target_split}_shuffled'] = configure_split_dict( # unlabeled for training
-        data = None,
-        split=f"unlabeled_{config.target_split}_shuffled",
-        split_name=f"unlabeled_{config.target_split}_shuffled",
-        train=False,
-        grouper=None,
-        verbose=True,
-        config=config)
-    datasets[f'unlabeled_{config.target_split}'] = configure_split_dict( # unlabeled for eval
-        data = None,
-        split=f"unlabeled_{config.target_split}",
-        split_name=f"unlabeled_{config.target_split}",
-        train=False,
-        grouper=None,
-        verbose=True,
-        config=config)
     
     # First run selection function
     selection_fn.select_and_reveal(label_manager=label_manager, K=config.n_shots)
@@ -64,29 +40,39 @@ def run_active_learning(selection_fn, datasets, grouper, config, general_logger,
         labeled_config = config
         labeled_grouper = grouper
 
-    configure_loaders( # labeled for training
-        split_dict=datasets[labeled_split_name],
+    # Add new splits to datasets dict
+    ## Labeled test (for training)
+    datasets[labeled_split_name] = configure_split_dict(
         data=labeled_dataset,
+        split=labeled_split_name,
+        split_name=labeled_split_name,
         train=True,
+        verbose=True,
         grouper=labeled_grouper,
         batch_size=config.batch_size,
         config=labeled_config)
-    configure_loaders( # unlabeled for training
-        split_dict=datasets[f'unlabeled_{config.target_split}_shuffled'],
+    ## Unlabeled test (for training)
+    datasets[f'unlabeled_{config.target_split}_shuffled'] = configure_split_dict(
         data=label_manager.get_unlabeled_subset(train=True),
+        split=f"unlabeled_{config.target_split}_shuffled",
+        split_name=f"unlabeled_{config.target_split}_shuffled",
         train=True,
         grouper=grouper,
-        batch_size=config.unlabeled_batch_size, # special batch size
+        batch_size=config.unlabeled_batch_size,
+        verbose=True,
         config=config)
-    configure_loaders( # for eval
-        split_dict=datasets[f'unlabeled_{config.target_split}'],
-        data=label_manager.get_unlabeled_subset(train=False),
+    ## Unlabeled test (for eval)
+    datasets[f'unlabeled_{config.target_split}'] = configure_split_dict(
+        data=label_manager.get_unlabeled_subset(train=False, return_pseudolabels=False),
+        split=f"unlabeled_{config.target_split}",
+        split_name=f"unlabeled_{config.target_split}",
         train=False,
         grouper=None,
-        batch_size=config.batch_size,
+        verbose=True,
+        batch_size=config.unlabeled_batch_size,
         config=config)
     
-    # Special de-duplicated eval set for fmow
+    ## Special de-duplicated eval set for fmow
     if config.dataset == 'fmow':
         disjoint_unlabeled_indices = fmow_deduplicate_locations(
             negative_indices=label_manager.labeled_indices, 
@@ -97,13 +83,14 @@ def run_active_learning(selection_fn, datasets, grouper, config, general_logger,
             disjoint_unlabeled_indices,
             label_manager.eval_transform
         )
-        datasets[f'unlabeled_{config.target_split}_disjoint'] = configure_split_dict( # for eval
+        datasets[f'unlabeled_{config.target_split}_disjoint'] = configure_split_dict(
             data=disjoint_eval_dataset,
             split=f'unlabeled_{config.target_split}_disjoint',
             split_name=f'unlabeled_{config.target_split}_disjoint',
             train=False,
             grouper=None,
             verbose=True,
+            batch_size=config.unlabeled_batch_size,
             config=config)
 
     # return names of train_split, unlabeled_split

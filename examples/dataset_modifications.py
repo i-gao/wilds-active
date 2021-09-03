@@ -46,14 +46,17 @@ class LabelManager:
         self._idx_to_pos = {idx:p for p, idx in enumerate(subset.indices)}
         self.verbose = verbose
 
-    def get_unlabeled_subset(self, train=False):
+    def get_unlabeled_subset(self, train=False, return_pseudolabels=True):
         if train:
             subset = WILDSSubset(self.dataset, self.unlabeled_indices, self.unlabeled_train_transform)
-            if self._pseudolabels is not None: 
+            if self._pseudolabels is not None and return_pseudolabels: 
                 return PseudolabeledSubset(subset, self.unlabeled_pseudolabel_array)
             else: return subset
         else:
-            return WILDSSubset(self.dataset, self.unlabeled_indices, self.eval_transform)
+            subset = WILDSSubset(self.dataset, self.unlabeled_indices, self.eval_transform)
+            if self._pseudolabels is not None and return_pseudolabels: 
+                return PseudolabeledSubset(subset, self.unlabeled_pseudolabel_array)
+            else: return subset
 
     def get_labeled_subset(self):
         return WILDSSubset(self.dataset, self.labeled_indices, self.labeled_train_transform)

@@ -282,7 +282,7 @@ def initialize_wandb(config):
                project=f"wilds")
     wandb.config.update(config)
 
-def configure_split_dict(split, data, split_name, train, verbose, grouper, config):
+def configure_split_dict(split, data, split_name, train, verbose, grouper, batch_size, config):
     split_dict = defaultdict(dict)
 
     # Loaders and dict
@@ -292,7 +292,7 @@ def configure_split_dict(split, data, split_name, train, verbose, grouper, confi
             data=data,
             train=train,
             grouper=grouper,
-            batch_size=config.batch_size,
+            batch_size=batch_size,
             config=config)
 
     # Set fields
