@@ -239,7 +239,7 @@ def evaluate(algorithm, datasets, epoch, general_logger, config):
 
         # Skip saving train preds, since the train loader generally shuffles the data
         if split != 'train':
-            save_pred_if_needed(y_pred, dataset, epoch, config, is_best=(config.eval_epoch is not None), force_save=True)
+            save_pred_if_needed(y_pred, dataset, epoch, config, is_best=(config.eval_epoch is None), force_save=True)
 
 def infer_predictions(model, loader, config):
     """
