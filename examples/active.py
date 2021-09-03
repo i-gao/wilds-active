@@ -97,6 +97,11 @@ def run_active_learning(selection_fn, datasets, grouper, config, general_logger,
     # Save NoisyStudent pseudolabels initially
     if config.algorithm == 'NoisyStudent':
         save_pseudo_if_needed(label_manager.unlabeled_pseudolabel_array, datasets[f'unlabeled_{config.target_split}'], None, config, None)
+        if f'unlabeled_{config.target_split}_disjoint' in datasets: 
+            save_pseudo_if_needed(
+                label_manager.unlabeled_pseudolabel_array[[label_manager.unlabeled_indices.index(i) for i in disjoint_unlabeled_indices]], 
+                datasets[f'unlabeled_{config.target_split}_disjoint'],
+                None, config, None)
 
     # return names of train_split, unlabeled_split
     return labeled_split_name, f"unlabeled_{config.target_split}_shuffled"
