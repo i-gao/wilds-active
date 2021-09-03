@@ -68,7 +68,7 @@ def run_metalearning_epoch(algorithm, dataset, general_logger, epoch, config, tr
     if general_logger and dataset['verbose']:
         general_logger.write('Epoch eval:\n')
         general_logger.write(results_str)
-    return results, epoch_y_pred
+    return results, epoch_y_pred, None
     
 def run_epoch(algorithm, dataset, general_logger, epoch, config, train, unlabeled_dataset=None):
     if general_logger and dataset['verbose']:
@@ -84,6 +84,7 @@ def run_epoch(algorithm, dataset, general_logger, epoch, config, train, unlabele
     # (which might not return exactly the same number of examples per epoch)
     epoch_y_true = []
     epoch_y_pred = []
+    epoch_y_pseudo = []
     epoch_metadata = []
 
     # Assert that data loaders are defined for the datasets
@@ -130,7 +131,8 @@ def run_epoch(algorithm, dataset, general_logger, epoch, config, train, unlabele
             y_pred = process_outputs_functions[config.process_outputs_function](y_pred)
         epoch_y_pred.append(y_pred)
         epoch_metadata.append(batch_results['metadata'].clone().detach())
-
+        if 'unlabeled_y_pseudo' in batch_results: epoch_y_pseudo.append(batch_results['unlabeled_y_pseudo'].clone().detach())
+        
         if general_logger and train and (batch_idx+1) % config.log_every==0:
             log_results(algorithm, dataset, general_logger, epoch, batch_idx)
 
@@ -138,6 +140,7 @@ def run_epoch(algorithm, dataset, general_logger, epoch, config, train, unlabele
 
     epoch_y_pred = torch.cat(epoch_y_pred)
     epoch_y_true = torch.cat(epoch_y_true)
+    epoch_y_pseudo = torch.cat(epoch_y_pseudo) if len(epoch_y_pseudo) > 0 else None
     epoch_metadata = torch.cat(epoch_metadata)
     results, results_str = dataset['dataset'].eval(
         epoch_y_pred,
@@ -159,7 +162,7 @@ def run_epoch(algorithm, dataset, general_logger, epoch, config, train, unlabele
         general_logger.write('Epoch eval:\n')
         general_logger.write(results_str)
 
-    return results, epoch_y_pred
+    return results, epoch_y_pred, epoch_y_pseudo
 
 
 def train(algorithm, datasets, general_logger, config, epoch_offset, best_val_metric, train_split="train", val_split="val", unlabeled_split=None):
@@ -203,8 +206,9 @@ def train(algorithm, datasets, general_logger, config, epoch_offset, best_val_me
             additional_splits = config.eval_splits
         if epoch % config.eval_additional_every == 0 or epoch+1 == config.n_epochs:
             for split in additional_splits:
-                _, y_pred = epoch_fn(algorithm, datasets[split], general_logger, epoch, config, train=False)
+                _, y_pred, y_pseudo = epoch_fn(algorithm, datasets[split], general_logger, epoch, config, train=False)
                 save_pred_if_needed(y_pred, datasets[split], epoch, config, is_best)
+                save_pseudo_if_needed(y_pseudo, datasets[split], epoch, config, is_best) # check if available, pull from datasets[split].pseudolabel_array for NS or concat for PL/FM
 
         general_logger.write('\n')
 
@@ -284,6 +288,20 @@ def save_pred_if_needed(y_pred, dataset, epoch, config, is_best, force_save=Fals
             save_pred(y_pred, prefix + f'epoch:last_pred.csv')
         if config.save_best and is_best:
             save_pred(y_pred, prefix + f'epoch:best_pred.csv')
+
+def save_pseudo_if_needed(y_pseudo, dataset, epoch, config, is_best, force_save=False):
+    if (not config.save_pseudo) or (y_pseudo is None):
+        return
+    prefix = get_pred_prefix(dataset, config)
+    if config.algorithm == 'NoisyStudent': # save on first epoch; pseudolabels are constant
+        if epoch == 0: save_pred(y_pseudo, prefix + f'_pseudo.csv')
+    else: 
+        if force_save or (config.save_step is not None and (epoch + 1) % config.save_step == 0):
+            save_pred(y_pseudo, prefix + f'epoch:{epoch}_pseudo.csv')
+        if config.save_last:
+            save_pred(y_pseudo, prefix + f'epoch:last_pseudo.csv')
+        if config.save_best and is_best:
+            save_pred(y_pseudo, prefix + f'epoch:best_pseudo.csv')
 
 
 def save_model_if_needed(algorithm, dataset, epoch, config, is_best, best_val_metric):

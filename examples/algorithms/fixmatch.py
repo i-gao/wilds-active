@@ -73,10 +73,10 @@ class FixMatch(SingleModelAlgorithm):
             - 'y_pred': outputs (logits) for the labeled batch
             - 'metadata': metdata tensor for the labeled batch
             - 'unlabeled_g': groups for the unlabeled batch
-            - 'unlabeled_weak_y_pseudo': class pseudolabels predicted from weakly augmented x of the unlabeled batch
+            - 'unlabeled_y_pseudo': class pseudolabels predicted from weakly augmented x of the unlabeled batch
             - 'unlabeled_mask': true if the unlabeled example had confidence above the threshold; we pass this around 
                 to help compute the loss in self.objective()
-            - 'unlabeled_strong_y_pred': outputs (logits) on strongly augmented x of the unlabeled batch
+            - 'unlabeled_y_pred': outputs (logits) on strongly augmented x of the unlabeled batch
             - 'unlabeled_metadata': metdata tensor for the unlabeled batch
         """
         assert labeled_batch is not None or unlabeled_batch is not None
@@ -108,11 +108,11 @@ class FixMatch(SingleModelAlgorithm):
                 outputs = self.model(x_weak)
                 mask = torch.max(F.softmax(outputs, -1), -1)[0] >= self.confidence_threshold
                 pseudolabels = self.process_outputs_function(outputs)
-                results['unlabeled_weak_y_pseudo'] = pseudolabels
+                results['unlabeled_y_pseudo'] = pseudolabels
                 results['unlabeled_mask'] = mask
 
             outputs = self.model(x_strong)
-            results['unlabeled_strong_y_pred'] = outputs
+            results['unlabeled_y_pred'] = outputs
         return results
 
     def objective(self, results):
@@ -123,11 +123,11 @@ class FixMatch(SingleModelAlgorithm):
             classification_loss = 0
         
         # Pseudolabeled loss
-        if 'unlabeled_weak_y_pseudo' in results:
+        if 'unlabeled_y_pseudo' in results:
             mask = results['unlabeled_mask']
             consistency_loss = self.loss.compute(
-                results['unlabeled_strong_y_pred'][mask], 
-                results['unlabeled_weak_y_pseudo'][mask], 
+                results['unlabeled_y_pred'][mask], 
+                results['unlabeled_y_pseudo'][mask], 
                 return_dict=False
             )
             pseudolabels_kept_frac = mask.count_nonzero().item() / mask.shape[0]
