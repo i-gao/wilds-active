@@ -206,7 +206,7 @@ def train(algorithm, datasets, general_logger, config, epoch_offset, best_val_me
             additional_splits = config.eval_splits
         if epoch % config.eval_additional_every == 0 or epoch+1 == config.n_epochs:
             for split in additional_splits:
-                if split == f'unlabeled_{config.target_split}' and config.algorithm != 'NoisyStudent':
+                if split == f'unlabeled_{config.target_split}':
                     _, y_pred, y_pseudo = epoch_fn(algorithm, datasets[split], general_logger, epoch, config, train=False, unlabeled_dataset=datasets[f'unlabeled_{config.target_split}_augmented'])
                 else:
                     _, y_pred, y_pseudo = epoch_fn(algorithm, datasets[split], general_logger, epoch, config, train=False)
