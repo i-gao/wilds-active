@@ -65,6 +65,7 @@ algorithm_defaults = {
         'self_training_labeled_weight': 1,
         'self_training_unlabeled_weight': 1,
         'self_training_threshold': 0.7,
+        'pseudolabel_T2': 0.4,
     },
     'NoisyStudent': {
         'train_loader': 'standard',

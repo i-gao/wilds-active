@@ -104,6 +104,7 @@ def main():
     parser.add_argument('--self_training_labeled_weight', type=float, help='Weight of labeled loss')
     parser.add_argument('--self_training_unlabeled_weight', type=float, help='Weight of unlabeled loss')
     parser.add_argument('--self_training_threshold', type=float)
+    parser.add_argument('--pseudolabel_T2', type=float, help='Percentage of total iterations at which to end linear scheduling and hold unlabeled weight at the max value')
     parser.add_argument('--soft_pseudolabels', default=False, type=parse_bool, const=True, nargs='?')
     parser.add_argument('--algo_log_metric')
 

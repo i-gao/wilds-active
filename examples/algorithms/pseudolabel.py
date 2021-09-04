@@ -3,6 +3,7 @@ import torch.nn.functional as F
 from models.initializer import initialize_model
 from algorithms.ERM import ERM
 from algorithms.single_model_algorithm import SingleModelAlgorithm
+from scheduler import LinearScheduleWithWarmupAndThreshold
 from wilds.common.utils import split_into_groups
 from configs.supported import process_outputs_functions
 import copy
@@ -38,7 +39,14 @@ class PseudoLabel(SingleModelAlgorithm):
         )
         # algorithm hyperparameters
         self.labeled_weight = config.self_training_labeled_weight
-        self.unlabeled_weight = config.self_training_unlabeled_weight
+        self.unlabeled_weight_scheduler = LinearScheduleWithWarmupAndThreshold(
+            max_value=config.self_training_unlabeled_weight,
+            step_every_batch=True, # step per batch
+            last_warmup_step=0,
+            threshold_step=config.pseudolabel_T2*n_train_steps
+        ) 
+        self.schedulers.append(self.unlabeled_weight_scheduler)
+        self.scheduler_metric_names.append(None)
         self.confidence_threshold = config.self_training_threshold
         if config.process_outputs_function is not None: 
             self.process_outputs_function = process_outputs_functions[config.process_outputs_function]
@@ -121,10 +129,10 @@ class PseudoLabel(SingleModelAlgorithm):
             results, "classification_loss", self.labeled_weight * classification_loss
         )
         self.save_metric_for_logging(
-            results, "consistency_loss", self.unlabeled_weight * consistency_loss
+            results, "consistency_loss", self.unlabeled_weight_scheduler.value * consistency_loss
         )
         self.save_metric_for_logging(
             results, "pseudolabels_kept_frac", pseudolabels_kept_frac
         )
 
-        return self.labeled_weight * classification_loss + self.unlabeled_weight * consistency_loss 
+        return self.labeled_weight * classification_loss + self.unlabeled_weight_scheduler.value * consistency_loss 
