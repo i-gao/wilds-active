@@ -9,6 +9,14 @@ def populate_defaults(config):
     of other hyperparameters."""
     assert config.dataset is not None, 'dataset must be specified'
     assert config.algorithm is not None, 'algorithm must be specified'
+    
+    if config.additional_train_transform is not None:
+        if config.algorithm in ["NoisyStudent", "FixMatch"]:
+            raise ValueError(
+                "Cannot pass in a value for additional_train_transform, NoisyStudent "
+                "and FixMatch already have default transformations for the training data."
+            )
+
     # implied defaults from choice of dataset
     config = populate_config(
         config, 

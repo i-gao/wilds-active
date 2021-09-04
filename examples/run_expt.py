@@ -77,14 +77,12 @@ def main():
 
 
     # Transforms
-    parser.add_argument('--train_transform', choices=supported.transforms)
-    parser.add_argument('--eval_transform', choices=supported.transforms)
+    parser.add_argument('--transform', choices=supported.transforms)
+    parser.add_argument('--additional_train_transform', choices=supported.additional_transforms)
     parser.add_argument('--target_resolution', nargs='+', type=int, help='The input resolution that images will be resized to before being passed into the model. For example, use --target_resolution 224 224 for a standard ResNet.')
     parser.add_argument('--resize_scale', type=float)
     parser.add_argument('--max_token_length', type=int)
     parser.add_argument('--randaugment_n', type=int, help='N parameter of RandAugment - the number of transformations to apply.')
-    parser.add_argument('--randaugment_m', type=int,
-        help='M parameter of RandAugment - the magnitude of the transformation. Values range from 1 to 10, where 10 indicates the maximum scale for a transformation.')
 
     # Objective
     parser.add_argument('--loss_function', choices = supported.losses)
@@ -207,27 +205,34 @@ def main():
     # To facilitate this, we'll hack the WILDS dataset to include each point's split in the metadata array
     add_split_to_wilds_dataset_metadata_array(full_dataset)
 
-    # To implement data augmentation (i.e., have different transforms
-    # at training time vs. test time), modify these two lines:
+    # To modify data augmentation, modify the following code block.
+    # If you want to use transforms that modify both `x` and `y`,
+    # set `do_transform_y` to True when initializing the `WILDSSubset` below.
     train_transform = initialize_transform(
-        transform_name=config.train_transform,
+        transform_name=config.transform,
         config=config,
         dataset=full_dataset,
-        additional_transform_name=("noisy_student" if config.algorithm == "NoisyStudent" else None)
-    )
+        additional_transform_name=config.additional_train_transform,
+        is_training=True)
     eval_transform = initialize_transform(
-        transform_name=config.eval_transform,
+        transform_name=config.transform,
         config=config,
-        dataset=full_dataset)
+        dataset=full_dataset,
+        is_training=False)
         
     # Define any special transforms for the algorithms that use unlabeled data
-    unlabeled_train_transform = None
     if config.algorithm == "FixMatch":
+        # For FixMatch, we need our loader to return batches in the form ((x_weak, x_strong), m)
+        # We do this by initializing a special transform function
         unlabeled_train_transform = initialize_transform(
-            config.train_transform, config, full_dataset, additional_transform_name="fixmatch" # TODO test this out
+            config.transform, config, full_dataset, is_training=True, additional_transform_name="fixmatch"
         )
-    elif config.algorithm == "NoisyStudent":
-        unlabeled_train_transform = train_transform # NoisyStudent uses strong on BOTH labeled and unlabeled
+    elif config.algorithm == "PseudoLabel":
+        unlabeled_train_transform = initialize_transform(
+            config.transform, config, full_dataset, is_training=True, additional_transform_name="randaugment"
+        )
+    else:
+        unlabeled_train_transform = train_transform
         
     train_grouper = CombinatorialGrouper(
         dataset=full_dataset,
@@ -269,9 +274,18 @@ def main():
             assert config.teacher_model_path is not None
             teacher_model = initialize_model(config, infer_d_out(full_dataset)).to(config.device)
             load(teacher_model, config.teacher_model_path, device=config.device)
+            # Infer teacher outputs on weakly augmented unlabeled examples in sequential order
+            weak_transform = initialize_transform(
+                transform_name=config.transform,
+                config=config,
+                dataset=full_dataset,
+                is_training=True,
+                additional_transform_name="weak"
+            )
+            unlabeled_split_dataset = full_dataset.get_subset(split, transform=weak_transform, frac=config.frac)
             sequential_loader = get_eval_loader(
                 loader=config.eval_loader,
-                dataset=full_dataset.get_subset(split, frac=config.frac, transform=eval_transform),
+                dataset=unlabeled_split_dataset,
                 grouper=train_grouper,
                 batch_size=config.unlabeled_batch_size,
                 **config.loader_kwargs

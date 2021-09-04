@@ -1,8 +1,9 @@
 import copy
 from typing import List
 
-import torchvision.transforms as transforms
 import torch
+import torchvision.transforms as transforms
+import torchvision.transforms.functional as TF
 from transformers import BertTokenizerFast, DistilBertTokenizerFast
 
 from data_augmentation.randaugment import FIX_MATCH_AUGMENTATION_POOL, RandAugment
@@ -13,8 +14,13 @@ _DEFAULT_IMAGE_TENSOR_NORMALIZATION_STD = [0.229, 0.224, 0.225]
 
 
 def initialize_transform(
-    transform_name, config, dataset, additional_transform_name=None
+    transform_name, config, dataset, is_training, additional_transform_name=None
 ):
+    """
+    By default, transforms should take in `x` and return `transformed_x`.
+    For transforms that take in `(x, y)` and return `(transformed_x, transformed_y)`,
+    set `do_transform_y` to True when initializing the WILDSSubset.    
+    """
     if transform_name is None:
         return None
     elif transform_name == "bert":
@@ -35,7 +41,9 @@ def initialize_transform(
         transform_steps = get_image_resize_and_center_crop_transform_steps(
             config, dataset
         )
-    elif transform_name == "poverty_train":
+    elif transform_name == "poverty":
+        if not is_training:
+            return None
         normalize = False
         should_rgb_transform = True
         transform_steps = get_poverty_train_transform_steps()
@@ -46,13 +54,17 @@ def initialize_transform(
         _DEFAULT_IMAGE_TENSOR_NORMALIZATION_MEAN,
         _DEFAULT_IMAGE_TENSOR_NORMALIZATION_STD,
     )
-    if additional_transform_name == "fixmatch": # additionally layer on weak and strong (randaugment)
+    if additional_transform_name == "fixmatch":
         transformations = add_fixmatch_transform(
             config, dataset, transform_steps, default_normalization
         )
         transform = MultipleTransforms(transformations)
-    elif additional_transform_name == 'noisy_student': # additionally layer on randaugment
-        transform = add_noisy_student_transform(
+    elif additional_transform_name == "randaugment":
+        transform = add_rand_augment_transform(
+            config, dataset, transform_steps, default_normalization
+        )
+    elif additional_transform_name == "weak":
+        transform = add_weak_transform(
             config, dataset, transform_steps, default_normalization
         )
     else:
@@ -139,13 +151,32 @@ def get_image_resize_transform_steps(config, dataset) -> List:
     """
     assert dataset.original_resolution is not None
     assert config.resize_scale is not None
-
     scaled_resolution = tuple(
         int(res * config.resize_scale) for res in dataset.original_resolution
     )
     return [
         transforms.Resize(scaled_resolution)
     ]
+
+
+def initialize_poverty_transform(is_training):
+    if is_training:
+        transforms_ls = [
+            transforms.ToPILImage(),
+            transforms.RandomHorizontalFlip(),
+            transforms.RandomVerticalFlip(),
+            transforms.ColorJitter(brightness=0.8, contrast=0.8, saturation=0.8, hue=0.1),
+            transforms.ToTensor()]
+        rgb_transform = transforms.Compose(transforms_ls)
+
+        def transform_rgb(img):
+            # bgr to rgb and back to bgr
+            img[:3] = rgb_transform(img[:3][[2,1,0]])[[2,1,0]]
+            return img
+        transform = transforms.Lambda(lambda x: transform_rgb(x))
+        return transform
+    else:
+        return None
 
 
 def get_poverty_train_transform_steps() -> List:
@@ -167,7 +198,13 @@ def apply_rgb_transform(transform):
 
 
 def add_fixmatch_transform(config, dataset, base_transform_steps, normalization):
-    # Adapted from https://github.com/kekmodel/FixMatch-pytorch
+    return (
+        add_weak_transform(config, dataset, base_transform_steps, normalization),
+        add_rand_augment_transform(config, dataset, base_transform_steps, normalization)
+    )
+
+def add_weak_transform(config, dataset, base_transform_steps, normalization):
+    # Adapted from https://github.com/YBZh/Bridging_UDA_SSL
     target_resolution = _get_target_resolution(config, dataset)
     weak_transform_steps = copy.deepcopy(base_transform_steps)
     weak_transform_steps.extend(
@@ -180,34 +217,17 @@ def add_fixmatch_transform(config, dataset, base_transform_steps, normalization)
             normalization,
         ]
     )
+    return transforms.Compose(weak_transform_steps)
 
-    strong_transform_steps = copy.deepcopy(base_transform_steps)
-    strong_transform_steps.extend(
-        [
-            transforms.RandomHorizontalFlip(),
-            transforms.RandomCrop(
-                size=target_resolution,
-            ),
-            RandAugment(
-                n=config.randaugment_n,
-                augmentation_pool=FIX_MATCH_AUGMENTATION_POOL,
-            ),
-            transforms.ToTensor(),
-            normalization,
-        ]
-    )
-    return transforms.Compose(weak_transform_steps), transforms.Compose(strong_transform_steps)
-
-def add_noisy_student_transform(config, dataset, base_transform_steps, normalization):
+def add_rand_augment_transform(config, dataset, base_transform_steps, normalization):
+    # Adapted from https://github.com/YBZh/Bridging_UDA_SSL
     target_resolution = _get_target_resolution(config, dataset)
     strong_transform_steps = copy.deepcopy(base_transform_steps)
     strong_transform_steps.extend(
         [
             transforms.RandomHorizontalFlip(),
             transforms.RandomCrop(
-                size=target_resolution,
-                padding=int(target_resolution[0] * 0.125),
-                padding_mode="reflect",
+                size=target_resolution
             ),
             RandAugment(
                 n=config.randaugment_n,
