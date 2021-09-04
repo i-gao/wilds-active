@@ -37,8 +37,8 @@ class PseudoLabel(SingleModelAlgorithm):
             n_train_steps=n_train_steps,
         )
         # algorithm hyperparameters
-        self.pseudolabel_labeled_weight = config.self_training_labeled_weight
-        self.pseudolabel_unlabeled_weight = config.self_training_unlabeled_weight
+        self.labeled_weight = config.self_training_labeled_weight
+        self.unlabeled_weight = config.self_training_unlabeled_weight
         self.confidence_threshold = config.self_training_threshold
         if config.process_outputs_function is not None: 
             self.process_outputs_function = process_outputs_functions[config.process_outputs_function]
@@ -118,13 +118,13 @@ class PseudoLabel(SingleModelAlgorithm):
 
         # Add to results for additional logging
         self.save_metric_for_logging(
-            results, "classification_loss", self.pseudolabel_labeled_weight * classification_loss
+            results, "classification_loss", self.labeled_weight * classification_loss
         )
         self.save_metric_for_logging(
-            results, "consistency_loss", self.pseudolabel_unlabeled_weight * consistency_loss
+            results, "consistency_loss", self.unlabeled_weight * consistency_loss
         )
         self.save_metric_for_logging(
             results, "pseudolabels_kept_frac", pseudolabels_kept_frac
         )
 
-        return self.pseudolabel_labeled_weight * classification_loss + self.pseudolabel_unlabeled_weight * consistency_loss 
+        return self.labeled_weight * classification_loss + self.unlabeled_weight * consistency_loss 
