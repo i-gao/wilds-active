@@ -1,5 +1,5 @@
 import torch
-
+import math
 from wilds.common.utils import get_counts
 from algorithms.ERM import ERM
 from algorithms.groupDRO import GroupDRO
@@ -17,7 +17,7 @@ def initialize_algorithm(config, datasets, train_grouper, unlabeled_dataset=None
     d_out = infer_d_out(train_dataset)
 
     # Other config
-    n_train_steps = len(train_loader) * config.n_epochs
+    n_train_steps = math.ceil(len(train_loader)/config.step_every) * config.n_epochs
     loss = losses[config.loss_function]
     metric = algo_log_metrics[config.algo_log_metric]
 

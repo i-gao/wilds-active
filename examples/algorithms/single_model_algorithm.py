@@ -30,6 +30,9 @@ class SingleModelAlgorithm(GroupAlgorithm):
             model = DataParallel(model)
         model.to(config.device)
 
+        self.batch_idx = 0
+        self.step_every = config.step_every
+
         # initialize the module
         super().__init__(
             device=config.device,
@@ -73,13 +76,14 @@ class SingleModelAlgorithm(GroupAlgorithm):
     def objective(self, results):
         raise NotImplementedError
 
-    def evaluate(self, batch, unlabeled_batch=None):
+    def evaluate(self, batch, unlabeled_batch=None, is_epoch_end=False):
         """
         Process the batch and update the log, without updating the model
         Args:
             - batch (tuple of Tensors): a batch of labeled data yielded by data loaders
             - unlabeled_batch: unlabled data. Use cases for passing in include if you're interested
             in looking at the final loss (including unlabeled loss) or retrieving the unlabeled outputs
+            - is_epoch_end: no-op; kwarg required for compatibility with train.py
         Output:
             - results (dictionary): information about the batch, such as:
                 - g (Tensor)
@@ -101,7 +105,7 @@ class SingleModelAlgorithm(GroupAlgorithm):
         self.update_log(results)
         return self.sanitize_dict(results)
 
-    def update(self, batch, unlabeled_batch=None):
+    def update(self, batch, unlabeled_batch=None, is_epoch_end=False):
         """
         Process the batch, update the log, and update the model
         Args:
@@ -117,9 +121,14 @@ class SingleModelAlgorithm(GroupAlgorithm):
                 - objective (float)
         """
         assert self.is_training
-        # process batch
+        # process this batch
         results = self.process_batch(batch, unlabeled_batch=unlabeled_batch)
-        self._update(results)
+        
+        # update running statistics and update model if we've reached end of effective batch
+        self._update(
+            results, 
+            should_step=(((self.batch_idx + 1) % self.step_every == 0) or (is_epoch_end))
+        )
 
         # log batch statistics
         self.save_metric_for_logging( 
@@ -128,6 +137,14 @@ class SingleModelAlgorithm(GroupAlgorithm):
         
         # log results
         self.update_log(results)
+
+        # iterate batch index
+        if is_epoch_end:
+            self.batch_idx = 0
+        else:
+            self.batch_idx += 1
+
+        # return only this batch's results
         return self.sanitize_dict(results)
 
     def _update(self, results):
@@ -142,13 +159,17 @@ class SingleModelAlgorithm(GroupAlgorithm):
         # update
         self.model.zero_grad()
         objective.backward()
-        if self.max_grad_norm:
-            clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
-        self.optimizer.step()
-        self.step_schedulers(
-            is_epoch=False,
-            metrics=results,
-            log_access=False)
+        
+        # update model and logs based on effective batch
+        if should_step:
+            if self.max_grad_norm:
+                clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
+            self.optimizer.step()
+            self.step_schedulers(
+                is_epoch=False,
+                metrics=self.log_dict,
+                log_access=False)
+            self.model.zero_grad()
 
     def save_metric_for_logging(self, results, metric, value):
         if isinstance(value, torch.Tensor):
