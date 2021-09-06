@@ -11,6 +11,7 @@ class SingleModelAlgorithm(GroupAlgorithm):
     An abstract class for algorithm that has one underlying model.
     """
     def __init__(self, config, model, grouper, loss, metric, n_train_steps):
+        self.config = config 
         # get metrics
         self.loss = loss
         logged_metrics = [self.loss,]
@@ -44,6 +45,15 @@ class SingleModelAlgorithm(GroupAlgorithm):
             no_group_logging=config.no_group_logging,
         )
         self.model = model
+
+    def change_n_train_steps(new_n_train_steps):
+        """
+        When using active learning, we run into a problem where we have to initialize the algorithm
+        before we've sampled our train set (and thus we initially don't know how many training steps we'll use). 
+        We can use this helper function to re-initializes schedulers after determining the length of our train set.
+        """
+        main_scheduler = initialize_scheduler(self.config, self.optimizer, new_n_train_steps)
+        self.schedulers[0] = main_scheduler
 
     def process_batch(self, batch, unlabeled_batch=None):
         """

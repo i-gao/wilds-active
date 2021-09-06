@@ -2,7 +2,7 @@ import os
 from tqdm import tqdm
 import math
 import torch
-from utils import save_model, save_pred, get_pred_prefix, get_model_prefix
+from utils import save_model, save_pred, get_pred_prefix, get_model_prefix, InfiniteDataIterator
 import torch.autograd.profiler as profiler
 from configs.supported import process_outputs_functions
 from algorithms.metalearning import sample_metalearning_task
@@ -94,31 +94,32 @@ def run_epoch(algorithm, dataset, general_logger, epoch, config, train, unlabele
     assert loader_name in dataset, "A data loader must be defined for the dataset."
     if unlabeled_dataset:
         assert loader_name in unlabeled_dataset, "A data loader must be defined for the dataset."
-    
-    ## if itertools.cycle is the issue, here's a loop to fix it
-    def cycle(iterable):
-        iterator = iter(iterable)
-        while True:
-            try:
-                yield next(iterator)
-            except StopIteration:
-                iterator = iter(iterable)
 
-    batches = (
-        zip(cycle(dataset[loader_name]), unlabeled_dataset[loader_name]) if unlabeled_dataset
-        else dataset[loader_name]
-    )
+    # if unlabeled_dataset:
+    #     # If an unlabeled dataset exists, one epoch = one pass over the unlabeled data
+    #     labeled_batches = InfiniteDataIterator(dataset[loader_name])
+    #     unlabeled_batches = unlabeled_dataset['loader']
+    #     if config.progress_bar: unlabeled_batches = tqdm(unlabeled_batches)
+    # else: 
+    #     # If no unlabeled dataset exists, one epoch = one pass over the labeled data
+    #     labeled_batches = dataset[loader_name]
+    #     unlabeled_batches = InfiniteDataIterator(unlabeled_dataset['loader'])
+    #     if config.progress_bar: labeled_batches = tqdm(labeled_batches)
+
+    batches = dataset[loader_name]
     if config.progress_bar:
         batches = tqdm(batches)
     last_batch_idx = len(batches)-1
 
+    unlabeled_batches = InfiniteDataIterator(unlabeled_dataset['loader'])
+    
     # Using enumerate(iterator) can sometimes leak memory in some environments (!)
     # so we manually increment batch_idx
     batch_idx = 0
-    for batch in batches:
+    for labeled_batch in batches:
         algo_fn = algorithm.update if train else algorithm.evaluate
         if unlabeled_dataset:
-            labeled_batch, unlabeled_batch = batch
+            unlabeled_batch = next(unlabeled_data_iterator)
             batch_results = algo_fn(labeled_batch, unlabeled_batch, is_epoch_end=(batch_idx==last_batch_idx))
         else:
             batch_results = algo_fn(batch, is_epoch_end=(batch_idx==last_batch_idx))

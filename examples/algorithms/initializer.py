@@ -11,13 +11,13 @@ from algorithms.pseudolabel import PseudoLabel
 from algorithms.noisy_student import NoisyStudent
 from configs.supported import algo_log_metrics, losses
 
-def initialize_algorithm(config, datasets, train_grouper, unlabeled_dataset=None):
-    train_dataset = datasets['train']['dataset']
-    train_loader = datasets['train']['train_loader']
+def initialize_algorithm(config, datasets, train_grouper, unlabeled_dataset=None, train_split="train"):
+    train_dataset = datasets[train_split]['dataset']
+    train_loader = datasets[train_split]['train_loader']
     d_out = infer_d_out(train_dataset)
 
     # Other config
-    n_train_steps = math.ceil(len(train_loader)/config.step_every) * config.n_epochs
+    n_train_steps = infer_n_train_steps(train_loader, config)
     loss = losses[config.loss_function]
     metric = algo_log_metrics[config.algo_log_metric]
 
@@ -121,3 +121,6 @@ def infer_d_out(train_dataset):
     else:
         raise RuntimeError('d_out not defined.')
     return d_out
+
+def infer_n_train_steps(train_loader, config):
+    return math.ceil(len(train_loader)/config.step_every) * config.n_epochs

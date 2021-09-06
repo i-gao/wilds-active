@@ -22,7 +22,7 @@ from wilds.common.grouper import CombinatorialGrouper
 
 from utils import set_seed, Logger, log_config, ParseKwargs, load, initialize_wandb, log_group_data, parse_bool, get_model_prefix, configure_split_dict, freeze_features
 from train import train, evaluate, infer_predictions
-from algorithms.initializer import initialize_algorithm, infer_d_out
+from algorithms.initializer import initialize_algorithm, infer_d_out, infer_n_train_steps
 from active import run_active_learning
 from dataset_modifications import LabelManager, add_split_to_wilds_dataset_metadata_array
 from selection_fn import initialize_selection_function
@@ -335,6 +335,8 @@ def main():
     log_group_data(datasets, log_grouper, logger)
 
     ## Initialize algorithm
+    ## Schedulers are initialized as if we will iterate over "train" split batches. 
+    ## If we train on another split (e.g. labeled test), we'll re-initialize schedulers later using algorithm.change_n_train_steps()
     algorithm = initialize_algorithm(
         config=config,
         datasets=datasets,
@@ -407,6 +409,18 @@ def main():
                 config=config,
                 general_logger=logger,
                 full_dataset=full_dataset)
+            # reset schedulers, which were originally initialized to schedule based on the 'train' split
+            algorithm.change_n_train_steps(
+                new_n_train_steps=infer_n_train_steps(datasets[labeled_split]['train_loader'], config) # one epoch = one pass over labeled data
+            )
+            # if config.algorithm in ['FixMatch', 'PseudoLabel', 'NoisyStudent']:
+            #     algorithm.change_n_train_steps(
+            #         new_n_train_steps=infer_n_train_steps(datasets[unlabeled_split]['train_loader'], config) # one epoch = one pass over unlabeled data
+            #     )
+            # else:
+            #     algorithm.change_n_train_steps(
+            #         new_n_train_steps=infer_n_train_steps(datasets[labeled_split]['train_loader'], config) # one epoch = one pass over labeled data
+            #     )
         else:
             train_split = "train"
             unlabeled_split = None
