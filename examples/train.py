@@ -284,7 +284,7 @@ def log_results(algorithm, dataset, general_logger, epoch, batch_idx):
 def save_pred_if_needed(y_pred, dataset, epoch, config, is_best, force_save=False):
     if config.save_pred:
         prefix = get_pred_prefix(dataset, config)
-        if force_save or (config.save_step is not None and (epoch + 1) % config.save_step == 0):
+        if force_save or (config.save_pred_step is not None and (epoch + 1) % config.save_pred_step == 0):
             save_pred(y_pred, prefix + f'epoch:{epoch}_pred.csv')
         if config.save_last:
             save_pred(y_pred, prefix + f'epoch:last_pred.csv')
@@ -298,7 +298,7 @@ def save_pseudo_if_needed(y_pseudo, dataset, epoch, config, is_best, force_save=
     if config.algorithm == 'NoisyStudent': # save on first epoch; pseudolabels are constant
         save_pred(y_pseudo, prefix + f'pseudo.csv')
     else: 
-        if force_save or (config.save_step is not None and (epoch + 1) % config.save_step == 0):
+        if force_save or (config.save_pred_step is not None and (epoch + 1) % config.save_pred_step == 0):
             save_pred(y_pseudo, prefix + f'epoch:{epoch}_pseudo.csv')
         if config.save_last:
             save_pred(y_pseudo, prefix + f'epoch:last_pseudo.csv')
@@ -308,7 +308,7 @@ def save_pseudo_if_needed(y_pseudo, dataset, epoch, config, is_best, force_save=
 
 def save_model_if_needed(algorithm, dataset, epoch, config, is_best, best_val_metric):
     prefix = get_model_prefix(dataset, config)
-    if config.save_step is not None and (epoch + 1) % config.save_step == 0:
+    if config.save_model_step is not None and (epoch + 1) % config.save_model_step == 0:
         save_model(algorithm, epoch, best_val_metric, prefix + f'epoch:{epoch}_model.pth')
     if config.save_last:
         save_model(algorithm, epoch, best_val_metric, prefix + f'epoch:last_model.pth')
