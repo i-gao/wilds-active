@@ -8,6 +8,11 @@ import torchvision
 import sys
 from collections import defaultdict
 
+try:
+    import wandb
+except Exception as e:
+    pass
+
 # TODO: This is needed to test the WILDS package locally. Remove later -Tony
 sys.path.insert(1, os.path.join(sys.path[0], '..'))
 
@@ -144,9 +149,15 @@ def main():
     parser.add_argument('--save_pred', type=parse_bool, const=True, nargs='?', default=True)
     parser.add_argument('--save_pseudo', type=parse_bool, const=True, nargs='?', default=True)
     parser.add_argument('--no_group_logging', type=parse_bool, const=True, nargs='?')
-    parser.add_argument('--use_wandb', type=parse_bool, const=True, nargs='?', default=False)
     parser.add_argument('--progress_bar', type=parse_bool, const=True, nargs='?', default=False)
     parser.add_argument('--resume', type=parse_bool, const=True, nargs='?', default=False, help='Whether to resume from the most recent saved model in the current log_dir.')
+
+    # Weights & Biases
+    parser.add_argument('--use_wandb', type=parse_bool, const=True, nargs='?', default=False)
+    parser.add_argument('--wandb_api_key_path', type=str,
+                        help="Path to Weights & Biases API Key. If use_wandb is set to True and this argument is not specified, user will be prompted to authenticate.")
+    parser.add_argument('--wandb_kwargs', nargs='*', action=ParseKwargs, default={},
+                        help="Will be passed directly into wandb.init().")
 
     config = parser.parse_args()
     config = populate_defaults(config)
@@ -440,6 +451,8 @@ def main():
             general_logger=logger,
             config=config)
 
+    if config.use_wandb:
+        wandb.finish()
     logger.close()
     for split in datasets:
         datasets[split]['eval_logger'].close()
