@@ -284,11 +284,11 @@ def main():
             # During forward pass, ensure we are not shuffling and not applying strong augs
             print(f"Inferring teacher pseudolabels on {config.target_split} for Noisy Student")
             assert config.teacher_model_path is not None
-            if not config.teacher_model_path.endswith(".pth"):
-            # Use the best model
-            config.teacher_model_path = os.path.join(
-                config.teacher_model_path,  f"{config.dataset}_seed:{config.seed}_epoch:best_model.pth"
-            )
+            if not config.teacher_model_path.endswith(".pth"): 
+                # Use the best model
+                config.teacher_model_path = os.path.join(
+                    config.teacher_model_path,  f"{config.dataset}_seed:{config.seed}_epoch:best_model.pth"
+                )
             teacher_model = initialize_model(config, infer_d_out(full_dataset)).to(config.device)
             load(teacher_model, config.teacher_model_path, device=config.device)
             # Infer teacher outputs on weakly augmented unlabeled examples in sequential order
