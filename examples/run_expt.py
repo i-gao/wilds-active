@@ -410,17 +410,11 @@ def main():
                 general_logger=logger,
                 full_dataset=full_dataset)
             # reset schedulers, which were originally initialized to schedule based on the 'train' split
+            # one epoch = one pass over labeled data
             algorithm.change_n_train_steps(
-                new_n_train_steps=infer_n_train_steps(datasets[labeled_split]['train_loader'], config) # one epoch = one pass over labeled data
+                new_n_train_steps=infer_n_train_steps(datasets[train_split]['train_loader'], config),
+                config=config
             )
-            # if config.algorithm in ['FixMatch', 'PseudoLabel', 'NoisyStudent']:
-            #     algorithm.change_n_train_steps(
-            #         new_n_train_steps=infer_n_train_steps(datasets[unlabeled_split]['train_loader'], config) # one epoch = one pass over unlabeled data
-            #     )
-            # else:
-            #     algorithm.change_n_train_steps(
-            #         new_n_train_steps=infer_n_train_steps(datasets[labeled_split]['train_loader'], config) # one epoch = one pass over labeled data
-            #     )
         else:
             train_split = "train"
             unlabeled_split = None

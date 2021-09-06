@@ -9,6 +9,8 @@ import torch
 import pandas as pd
 import re
 
+from torch.utils.data import DataLoader
+
 from algorithms.algorithm import Algorithm
 
 from collections import defaultdict

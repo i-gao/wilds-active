@@ -95,31 +95,20 @@ def run_epoch(algorithm, dataset, general_logger, epoch, config, train, unlabele
     if unlabeled_dataset:
         assert loader_name in unlabeled_dataset, "A data loader must be defined for the dataset."
 
-    # if unlabeled_dataset:
-    #     # If an unlabeled dataset exists, one epoch = one pass over the unlabeled data
-    #     labeled_batches = InfiniteDataIterator(dataset[loader_name])
-    #     unlabeled_batches = unlabeled_dataset['loader']
-    #     if config.progress_bar: unlabeled_batches = tqdm(unlabeled_batches)
-    # else: 
-    #     # If no unlabeled dataset exists, one epoch = one pass over the labeled data
-    #     labeled_batches = dataset[loader_name]
-    #     unlabeled_batches = InfiniteDataIterator(unlabeled_dataset['loader'])
-    #     if config.progress_bar: labeled_batches = tqdm(labeled_batches)
-
     batches = dataset[loader_name]
     if config.progress_bar:
         batches = tqdm(batches)
     last_batch_idx = len(batches)-1
 
-    unlabeled_batches = InfiniteDataIterator(unlabeled_dataset['loader'])
-    
+    if unlabeled_dataset: unlabeled_batches = InfiniteDataIterator(unlabeled_dataset[loader_name])
+
     # Using enumerate(iterator) can sometimes leak memory in some environments (!)
     # so we manually increment batch_idx
     batch_idx = 0
     for labeled_batch in batches:
         algo_fn = algorithm.update if train else algorithm.evaluate
         if unlabeled_dataset:
-            unlabeled_batch = next(unlabeled_data_iterator)
+            unlabeled_batch = next(unlabeled_batches)
             batch_results = algo_fn(labeled_batch, unlabeled_batch, is_epoch_end=(batch_idx==last_batch_idx))
         else:
             batch_results = algo_fn(batch, is_epoch_end=(batch_idx==last_batch_idx))
