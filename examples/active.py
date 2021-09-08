@@ -102,10 +102,11 @@ def run_active_learning(selection_fn, datasets, grouper, config, general_logger,
 
     # Save NoisyStudent pseudolabels initially
     if config.algorithm == 'NoisyStudent':
-        save_pseudo_if_needed(label_manager.unlabeled_pseudolabel_array, datasets[f'unlabeled_{config.target_split}'], None, config, None)
+        save_pseudo_if_needed(label_manager.unlabeled_pseudolabel_array, f'unlabeled_{config.target_split}', datasets[f'unlabeled_{config.target_split}'], None, config, None)
         if f'unlabeled_{config.target_split}_disjoint' in datasets: 
             save_pseudo_if_needed(
                 label_manager.unlabeled_pseudolabel_array[[label_manager.unlabeled_indices.index(i) for i in disjoint_unlabeled_indices]], 
+                f'unlabeled_{config.target_split}_disjoint',
                 datasets[f'unlabeled_{config.target_split}_disjoint'],
                 None, config, None)
 

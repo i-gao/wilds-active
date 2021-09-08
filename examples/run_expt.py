@@ -134,9 +134,10 @@ def main():
     parser.add_argument('--process_outputs_function', choices = supported.process_outputs_functions)
     parser.add_argument('--evaluate_all_splits', type=parse_bool, const=True, nargs='?', default=False)
     parser.add_argument('--eval_splits', nargs='+', default=['val', 'test'])
+    parser.add_argument('--save_splits', nargs='+', default=['test'], help='If save_pred_step or save_pseudo_step are set, then this sets which splits to save pred / pseudos for. Must be a subset of eval_splits.')
+    parser.add_argument('--eval_additional_every', default=1, type=int, help='Eval additional splits every _ training epochs.')
     parser.add_argument('--eval_only', type=parse_bool, const=True, nargs='?', default=False)
     parser.add_argument('--eval_epoch', default=None, type=int, help='If eval_only is set, then eval_epoch allows you to specify evaluating at a particular epoch. By default, it evaluates the best epoch by validation performance.')
-    parser.add_argument('--eval_additional_every', default=1, type=int, help='Eval additional splits every _ epochs.')
 
     # Misc
     parser.add_argument('--device', type=int, nargs='+', default=[0])
@@ -145,10 +146,9 @@ def main():
     parser.add_argument('--log_every', default=50, type=int)
     parser.add_argument('--save_model_step', type=int)
     parser.add_argument('--save_pred_step', type=int)
+    parser.add_argument('--save_pseudo_step', type=int)
     parser.add_argument('--save_best', type=parse_bool, const=True, nargs='?', default=True)
     parser.add_argument('--save_last', type=parse_bool, const=True, nargs='?', default=True)
-    parser.add_argument('--save_pred', type=parse_bool, const=True, nargs='?', default=True)
-    parser.add_argument('--save_pseudo', type=parse_bool, const=True, nargs='?', default=True)
     parser.add_argument('--no_group_logging', type=parse_bool, const=True, nargs='?')
     parser.add_argument('--progress_bar', type=parse_bool, const=True, nargs='?', default=False)
     parser.add_argument('--resume', type=parse_bool, const=True, nargs='?', default=False, help='Whether to resume from the most recent saved model in the current log_dir.')

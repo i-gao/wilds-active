@@ -17,6 +17,8 @@ def populate_defaults(config):
                 "and FixMatch already have default transformations for the training data."
             )
 
+    assert set(config.save_splits).issubset(config.eval_splits), 'splits we save preds for must be a subset of eval_splits'
+
     # implied defaults from choice of dataset
     config = populate_config(
         config, 

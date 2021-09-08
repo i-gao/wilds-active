@@ -191,7 +191,7 @@ def train(algorithm, datasets, general_logger, config, epoch_offset, best_val_me
             if is_best:
                 best_val_metric = curr_val_metric
                 general_logger.write(f'Epoch {epoch} has the best validation performance so far.\n')
-            save_pred_if_needed(y_pred, datasets[train_split], epoch, config, is_best)
+            save_pred_if_needed(y_pred, val_split, datasets[val_split], epoch, config, is_best)
         save_model_if_needed(algorithm, datasets[train_split], epoch, config, is_best, best_val_metric)
        
         # Then run everything else
@@ -207,8 +207,8 @@ def train(algorithm, datasets, general_logger, config, epoch_offset, best_val_me
                     _, y_pred, y_pseudo = epoch_fn(algorithm, datasets[split], general_logger, epoch, config, train=False, unlabeled_dataset=datasets[f'unlabeled_{config.target_split}_augmented'])
                 else:
                     _, y_pred, y_pseudo = epoch_fn(algorithm, datasets[split], general_logger, epoch, config, train=False)
-                save_pred_if_needed(y_pred, datasets[split], epoch, config, is_best)
-                save_pseudo_if_needed(y_pseudo, datasets[split], epoch, config, is_best)
+                save_pred_if_needed(y_pred, split, datasets[split], epoch, config, is_best)
+                save_pseudo_if_needed(y_pseudo, split, datasets[split], epoch, config, is_best)
         general_logger.write('\n')
 
 
@@ -245,7 +245,7 @@ def evaluate(algorithm, datasets, epoch, general_logger, config):
 
         # Skip saving train preds, since the train loader generally shuffles the data
         if split != 'train':
-            save_pred_if_needed(epoch_y_pred, dataset, epoch, config, is_best=(config.eval_epoch is None), force_save=True)
+            save_pred_if_needed(epoch_y_pred, split, dataset, epoch, config, is_best=(config.eval_epoch is None), force_save=True)
 
 def infer_predictions(model, loader, config):
     """
@@ -277,24 +277,25 @@ def log_results(algorithm, dataset, general_logger, epoch, effective_batch_idx):
             general_logger.write(algorithm.get_pretty_log_str())
         algorithm.reset_log()
 
-def save_pred_if_needed(y_pred, dataset, epoch, config, is_best, force_save=False):
-    if config.save_pred:
-        prefix = get_pred_prefix(dataset, config)
-        if force_save or (config.save_pred_step is not None and (epoch + 1) % config.save_pred_step == 0):
-            save_array(y_pred, prefix + f'epoch:{epoch}_pred.csv')
-        if config.save_last:
-            save_array(y_pred, prefix + f'epoch:last_pred.csv')
-        if config.save_best and is_best:
-            save_array(y_pred, prefix + f'epoch:best_pred.csv')
+def save_pred_if_needed(y_pred, split, dataset, epoch, config, is_best, force_save=False):
+    if (not config.save_pred_step) or (split not in config.save_splits):
+        return
+    prefix = get_pred_prefix(dataset, config)
+    if force_save or (config.save_pred_step is not None and (epoch + 1) % config.save_pred_step == 0):
+        save_array(y_pred, prefix + f'epoch:{epoch}_pred.csv')
+    if config.save_last:
+        save_array(y_pred, prefix + f'epoch:last_pred.csv')
+    if config.save_best and is_best:
+        save_array(y_pred, prefix + f'epoch:best_pred.csv')
 
-def save_pseudo_if_needed(y_pseudo, dataset, epoch, config, is_best, force_save=False):
-    if (not config.save_pseudo) or (y_pseudo is None):
+def save_pseudo_if_needed(y_pseudo, split, dataset, epoch, config, is_best, force_save=False):
+    if (not config.save_pseudo_step) or (y_pseudo is None) or (split not in config.save_splits):
         return
     prefix = get_pred_prefix(dataset, config)
     if config.algorithm == 'NoisyStudent': # save on first epoch; pseudolabels are constant
         save_array(y_pseudo, prefix + f'pseudo.csv')
     else: 
-        if force_save or (config.save_pred_step is not None and (epoch + 1) % config.save_pred_step == 0):
+        if force_save or (config.save_pseudo_step is not None and (epoch + 1) % config.save_pseudo_step == 0):
             save_array(y_pseudo, prefix + f'epoch:{epoch}_pseudo.csv')
         if config.save_last:
             save_array(y_pseudo, prefix + f'epoch:last_pseudo.csv')
