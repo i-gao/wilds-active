@@ -165,8 +165,6 @@ class SingleModelAlgorithm(GroupAlgorithm):
         # compute objective
         objective = self.objective(results)
         results['objective'] = objective.item()
-        # update
-        self.model.zero_grad()
         objective.backward()
         
         # update model and logs based on effective batch
