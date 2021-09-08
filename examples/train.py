@@ -2,7 +2,7 @@ import os
 from tqdm import tqdm
 import math
 import torch
-from utils import save_model, save_pred, get_pred_prefix, get_model_prefix, InfiniteDataIterator
+from utils import save_model, save_array, get_pred_prefix, get_model_prefix, InfiniteDataIterator
 import torch.autograd.profiler as profiler
 from configs.supported import process_outputs_functions
 from algorithms.metalearning import sample_metalearning_task
@@ -281,25 +281,25 @@ def save_pred_if_needed(y_pred, dataset, epoch, config, is_best, force_save=Fals
     if config.save_pred:
         prefix = get_pred_prefix(dataset, config)
         if force_save or (config.save_pred_step is not None and (epoch + 1) % config.save_pred_step == 0):
-            save_pred(y_pred, prefix + f'epoch:{epoch}_pred.csv')
+            save_array(y_pred, prefix + f'epoch:{epoch}_pred.csv')
         if config.save_last:
-            save_pred(y_pred, prefix + f'epoch:last_pred.csv')
+            save_array(y_pred, prefix + f'epoch:last_pred.csv')
         if config.save_best and is_best:
-            save_pred(y_pred, prefix + f'epoch:best_pred.csv')
+            save_array(y_pred, prefix + f'epoch:best_pred.csv')
 
 def save_pseudo_if_needed(y_pseudo, dataset, epoch, config, is_best, force_save=False):
     if (not config.save_pseudo) or (y_pseudo is None):
         return
     prefix = get_pred_prefix(dataset, config)
     if config.algorithm == 'NoisyStudent': # save on first epoch; pseudolabels are constant
-        save_pred(y_pseudo, prefix + f'pseudo.csv')
+        save_array(y_pseudo, prefix + f'pseudo.csv')
     else: 
         if force_save or (config.save_pred_step is not None and (epoch + 1) % config.save_pred_step == 0):
-            save_pred(y_pseudo, prefix + f'epoch:{epoch}_pseudo.csv')
+            save_array(y_pseudo, prefix + f'epoch:{epoch}_pseudo.csv')
         if config.save_last:
-            save_pred(y_pseudo, prefix + f'epoch:last_pseudo.csv')
+            save_array(y_pseudo, prefix + f'epoch:last_pseudo.csv')
         if config.save_best and is_best:
-            save_pred(y_pseudo, prefix + f'epoch:best_pseudo.csv')
+            save_array(y_pseudo, prefix + f'epoch:best_pseudo.csv')
 
 
 def save_model_if_needed(algorithm, dataset, epoch, config, is_best, best_val_metric):

@@ -3,7 +3,7 @@ from wilds.common.grouper import CombinatorialGrouper
 import torch
 import numpy as np
 import pandas as pd
-from utils import configure_split_dict
+from utils import configure_split_dict, save_array
 from dataset_modifications import fmow_deduplicate_locations
 from copy import copy
 from train import save_pseudo_if_needed
@@ -38,6 +38,9 @@ def run_active_learning(selection_fn, datasets, grouper, config, general_logger,
     else:
         labeled_config = config
         labeled_grouper = grouper
+
+    # Dump unlabeled indices to file
+    save_array(label_manager.unlabeled_indices, csv_path=f'{config.log_dir}/unlabeled_test_indices.csv')
 
     # Add new splits to datasets dict
     ## Training Splits
@@ -80,8 +83,7 @@ def run_active_learning(selection_fn, datasets, grouper, config, general_logger,
             negative_indices=label_manager.labeled_indices, 
             superset_indices=label_manager.unlabeled_indices, 
             config=config)
-        # dump indices to file
-        pd.DataFrame(disjoint_unlabeled_indices).to_csv(f'{config.log_dir}/disjoint_indices.csv', index=False, header=False)
+        save_array(disjoint_unlabeled_indices, csv_path=f'{config.log_dir}/disjoint_indices.csv')
         # build disjoint split        
         disjoint_eval_dataset = WILDSSubset(
             full_dataset,

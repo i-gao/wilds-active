@@ -5,7 +5,7 @@ import pandas as pd
 import torch
 import torch.nn.functional as F
 import copy
-from utils import configure_split_dict
+from utils import configure_split_dict, save_array
 from train import run_epoch
 from tqdm import tqdm
 import glob
@@ -84,7 +84,7 @@ class SelectionFunction():
             reveal = reveal + self.select(label_manager, remaining, unlabeled_indices, groups, group_ids)
 
         label_manager.reveal_labels(reveal)
-        self.save_selections(reveal)
+        save_array(reveal, csv_path=f"{self.log_dir}/selections.csv", mode=self.mode)
 
     def select(self, label_manager, K_per_group:[int], unlabeled_indices: torch.Tensor, groups: torch.Tensor, group_ids:[int]):
         """
@@ -114,14 +114,6 @@ class SelectionFunction():
         self._prior_selections = self._prior_selections + df[0].tolist()
         
         print(f"Loaded {len(self._prior_selections)} previous selections")
-
-    def save_selections(self, indices):
-        """
-        Saves indices of selected points
-        """
-        csvpath = f"{self.log_dir}/selections.csv"
-        df = pd.DataFrame(indices)
-        df.to_csv(csvpath, mode=self.mode, index=False, header=False)
 
 class RandomSampling(SelectionFunction):
     def __init__(self, select_grouper, config):

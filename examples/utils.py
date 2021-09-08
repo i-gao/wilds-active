@@ -323,9 +323,11 @@ def configure_split_dict(split, data, split_name, verbose, grouper, batch_size, 
 
     return split_dict
 
-def save_pred(y_pred, csv_path):
-    df = pd.DataFrame(y_pred.numpy())
-    df.to_csv(csv_path, index=False, header=False)
+def save_array(arr, csv_path, mode='w'):
+    if torch.is_tensor(arr): 
+        arr = arr.numpy()
+    df = pd.DataFrame(arr)
+    df.to_csv(csv_path, mode=mode, index=False, header=False)
 
 def get_replicate_str(dataset, config):
     if dataset['dataset'].dataset_name == 'poverty':
