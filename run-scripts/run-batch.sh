@@ -15,7 +15,7 @@ pretrained=True
 #######
 
 if [ $dataset == "fmow" ]; then
-    lr=0.00001
+    lr=0.0001
     labeled=16
     unlabeled=56
 elif [ $dataset == "iwildcam" ]; then
