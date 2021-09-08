@@ -1,20 +1,20 @@
 dataset=fmow
 algorithm=FixMatch
-epochs=50
+epochs=30
 wd=0
 lr=0.00001
-labeled=32
-unlabeled=128
+labeled=16
+unlabeled=56
 gpus=1
 sf=random
 selectby=region
-K=100
+K=50
 unlabeled_weight=1
 tau=0.8
 labels=None
 seed=0
-savepred=None
-stepevery=1
+savepred=1
+stepevery=2
 
 #######
 
