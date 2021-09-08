@@ -123,4 +123,4 @@ def infer_d_out(train_dataset):
     return d_out
 
 def infer_n_train_steps(train_loader, config):
-    return math.ceil(len(train_loader)/config.step_every) * config.n_epochs
+    return math.ceil(len(train_loader)/config.gradient_accumulation_steps) * config.n_epochs
