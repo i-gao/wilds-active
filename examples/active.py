@@ -108,4 +108,3 @@ def run_active_learning(selection_fn, datasets, grouper, config, general_logger,
 
     # return names of train_split, unlabeled_split
     return labeled_split_name, f"unlabeled_{config.target_split}_augmented"
-

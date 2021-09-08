@@ -8,6 +8,11 @@ import torchvision
 import sys
 from collections import defaultdict
 
+try:
+    import wandb
+except Exception as e:
+    pass
+
 # TODO: This is needed to test the WILDS package locally. Remove later -Tony
 sys.path.insert(1, os.path.join(sys.path[0], '..'))
 
@@ -15,9 +20,9 @@ import wilds
 from wilds.common.data_loaders import get_train_loader, get_eval_loader
 from wilds.common.grouper import CombinatorialGrouper
 
-from utils import set_seed, Logger, log_config, ParseKwargs, load, log_group_data, parse_bool, get_model_prefix, configure_split_dict, freeze_features
+from utils import set_seed, Logger, log_config, ParseKwargs, load, initialize_wandb, log_group_data, parse_bool, get_model_prefix, configure_split_dict, freeze_features
 from train import train, evaluate, infer_predictions
-from algorithms.initializer import initialize_algorithm, infer_d_out
+from algorithms.initializer import initialize_algorithm, infer_d_out, infer_n_train_steps
 from active import run_active_learning
 from dataset_modifications import LabelManager, add_split_to_wilds_dataset_metadata_array
 from selection_fn import initialize_selection_function
@@ -56,6 +61,7 @@ def main():
     parser.add_argument('--batch_size', type=int)
     parser.add_argument('--unlabeled_batch_size', type=int)
     parser.add_argument('--eval_loader', choices=['standard'], default='standard')
+    parser.add_argument('--gradient_accumulation_steps', type=int, default=1, help='Number of batches to process before stepping optimizer and/or schedulers. If > 1, we simulate having a larger effective batch size (though batchnorm behaves differently).')
 
     # Active Learning
     parser.add_argument('--active_learning', type=parse_bool, const=True, nargs='?')
@@ -77,14 +83,12 @@ def main():
 
 
     # Transforms
-    parser.add_argument('--train_transform', choices=supported.transforms)
-    parser.add_argument('--eval_transform', choices=supported.transforms)
+    parser.add_argument('--transform', choices=supported.transforms)
+    parser.add_argument('--additional_train_transform', choices=supported.additional_transforms)
     parser.add_argument('--target_resolution', nargs='+', type=int, help='The input resolution that images will be resized to before being passed into the model. For example, use --target_resolution 224 224 for a standard ResNet.')
     parser.add_argument('--resize_scale', type=float)
     parser.add_argument('--max_token_length', type=int)
     parser.add_argument('--randaugment_n', type=int, help='N parameter of RandAugment - the number of transformations to apply.')
-    parser.add_argument('--randaugment_m', type=int,
-        help='M parameter of RandAugment - the magnitude of the transformation. Values range from 1 to 10, where 10 indicates the maximum scale for a transformation.')
 
     # Objective
     parser.add_argument('--loss_function', choices = supported.losses)
@@ -104,6 +108,7 @@ def main():
     parser.add_argument('--self_training_labeled_weight', type=float, help='Weight of labeled loss')
     parser.add_argument('--self_training_unlabeled_weight', type=float, help='Weight of unlabeled loss')
     parser.add_argument('--self_training_threshold', type=float)
+    parser.add_argument('--pseudolabel_T2', type=float, help='Percentage of total iterations at which to end linear scheduling and hold unlabeled weight at the max value')
     parser.add_argument('--soft_pseudolabels', default=False, type=parse_bool, const=True, nargs='?')
     parser.add_argument('--algo_log_metric')
 
@@ -145,9 +150,15 @@ def main():
     parser.add_argument('--save_pred', type=parse_bool, const=True, nargs='?', default=True)
     parser.add_argument('--save_pseudo', type=parse_bool, const=True, nargs='?', default=True)
     parser.add_argument('--no_group_logging', type=parse_bool, const=True, nargs='?')
-    parser.add_argument('--use_wandb', type=parse_bool, const=True, nargs='?', default=False)
     parser.add_argument('--progress_bar', type=parse_bool, const=True, nargs='?', default=False)
     parser.add_argument('--resume', type=parse_bool, const=True, nargs='?', default=False, help='Whether to resume from the most recent saved model in the current log_dir.')
+
+    # Weights & Biases
+    parser.add_argument('--use_wandb', type=parse_bool, const=True, nargs='?', default=False)
+    parser.add_argument('--wandb_api_key_path', type=str,
+                        help="Path to Weights & Biases API Key. If use_wandb is set to True and this argument is not specified, user will be prompted to authenticate.")
+    parser.add_argument('--wandb_kwargs', nargs='*', action=ParseKwargs, default={},
+                        help="Will be passed directly into wandb.init().")
 
     config = parser.parse_args()
     config = populate_defaults(config)
@@ -207,27 +218,34 @@ def main():
     # To facilitate this, we'll hack the WILDS dataset to include each point's split in the metadata array
     add_split_to_wilds_dataset_metadata_array(full_dataset)
 
-    # To implement data augmentation (i.e., have different transforms
-    # at training time vs. test time), modify these two lines:
+    # To modify data augmentation, modify the following code block.
+    # If you want to use transforms that modify both `x` and `y`,
+    # set `do_transform_y` to True when initializing the `WILDSSubset` below.
     train_transform = initialize_transform(
-        transform_name=config.train_transform,
+        transform_name=config.transform,
         config=config,
         dataset=full_dataset,
-        additional_transform_name=("noisy_student" if config.algorithm == "NoisyStudent" else None)
-    )
+        additional_transform_name=config.additional_train_transform,
+        is_training=True)
     eval_transform = initialize_transform(
-        transform_name=config.eval_transform,
+        transform_name=config.transform,
         config=config,
-        dataset=full_dataset)
+        dataset=full_dataset,
+        is_training=False)
         
     # Define any special transforms for the algorithms that use unlabeled data
-    unlabeled_train_transform = None
     if config.algorithm == "FixMatch":
+        # For FixMatch, we need our loader to return batches in the form ((x_weak, x_strong), m)
+        # We do this by initializing a special transform function
         unlabeled_train_transform = initialize_transform(
-            config.train_transform, config, full_dataset, additional_transform_name="fixmatch" # TODO test this out
+            config.transform, config, full_dataset, is_training=True, additional_transform_name="fixmatch"
         )
-    elif config.algorithm == "NoisyStudent":
-        unlabeled_train_transform = train_transform # NoisyStudent uses strong on BOTH labeled and unlabeled
+    elif config.algorithm == "PseudoLabel":
+        unlabeled_train_transform = initialize_transform(
+            config.transform, config, full_dataset, is_training=True, additional_transform_name="randaugment"
+        )
+    else:
+        unlabeled_train_transform = train_transform
         
     train_grouper = CombinatorialGrouper(
         dataset=full_dataset,
@@ -267,11 +285,25 @@ def main():
             # During forward pass, ensure we are not shuffling and not applying strong augs
             print(f"Inferring teacher pseudolabels on {config.target_split} for Noisy Student")
             assert config.teacher_model_path is not None
+            if not config.teacher_model_path.endswith(".pth"): 
+                # Use the best model
+                config.teacher_model_path = os.path.join(
+                    config.teacher_model_path,  f"{config.dataset}_seed:{config.seed}_epoch:best_model.pth"
+                )
             teacher_model = initialize_model(config, infer_d_out(full_dataset)).to(config.device)
             load(teacher_model, config.teacher_model_path, device=config.device)
+            # Infer teacher outputs on weakly augmented unlabeled examples in sequential order
+            weak_transform = initialize_transform(
+                transform_name=config.transform,
+                config=config,
+                dataset=full_dataset,
+                is_training=True,
+                additional_transform_name="weak"
+            )
+            unlabeled_split_dataset = full_dataset.get_subset(split, transform=weak_transform, frac=config.frac)
             sequential_loader = get_eval_loader(
                 loader=config.eval_loader,
-                dataset=full_dataset.get_subset(split, frac=config.frac, transform=eval_transform),
+                dataset=unlabeled_split_dataset,
                 grouper=train_grouper,
                 batch_size=config.unlabeled_batch_size,
                 **config.loader_kwargs
@@ -304,25 +336,13 @@ def main():
     log_group_data(datasets, log_grouper, logger)
 
     ## Initialize algorithm
+    ## Schedulers are initialized as if we will iterate over "train" split batches. 
+    ## If we train on another split (e.g. labeled test), we'll re-initialize schedulers later using algorithm.change_n_train_steps()
     algorithm = initialize_algorithm(
         config=config,
         datasets=datasets,
         train_grouper=train_grouper)
     if config.freeze_featurizer: freeze_features(algorithm)
-
-    # Load pretrained weights if specified (this can be overriden by resume)
-    if config.pretrained_model_path is not None and os.path.exists(config.pretrained_model_path):
-        # The full model name is expected to be specified, so just load.
-        try:
-            prev_epoch, _, best_val_metric = load(algorithm, config.pretrained_model_path, device=config.device)
-            epoch_offset = 0
-            logger.write(
-                (f'Initialized algorithm with pretrained weights from {config.pretrained_model_path} ')
-                + (f'previously trained to epoch {prev_epoch} ' if prev_epoch else '')
-                + (f'with previous val metric {best_val_metric} ' if best_val_metric else '')
-            )
-        except:
-            pass
 
     if config.active_learning:
         select_grouper = CombinatorialGrouper(
@@ -359,6 +379,14 @@ def main():
             epoch_offset=0
             best_val_metric=None
 
+        # Log effective batch size
+        logger.write(
+            (f'\nUsing gradient_accumulation_steps {config.gradient_accumulation_steps} means that')
+            + (f' the effective labeled batch size is {config.batch_size * config.gradient_accumulation_steps}')
+            + (f' and the effective unlabeled batch size is {config.unlabeled_batch_size * config.gradient_accumulation_steps}' if config.unlabeled_batch_size else '')
+            + ('. Updates behave as if torch loaders have drop_last=False\n')
+        )
+
         if config.active_learning:
             # create new labeled/unlabeled test splits
             train_split, unlabeled_split = run_active_learning(
@@ -368,6 +396,12 @@ def main():
                 config=config,
                 general_logger=logger,
                 full_dataset=full_dataset)
+            # reset schedulers, which were originally initialized to schedule based on the 'train' split
+            # one epoch = one pass over labeled data
+            algorithm.change_n_train_steps(
+                new_n_train_steps=infer_n_train_steps(datasets[train_split]['train_loader'], config),
+                config=config
+            )
         else:
             train_split = "train"
             unlabeled_split = None
@@ -412,6 +446,8 @@ def main():
             general_logger=logger,
             config=config)
 
+    if config.use_wandb:
+        wandb.finish()
     logger.close()
     for split in datasets:
         datasets[split]['eval_logger'].close()

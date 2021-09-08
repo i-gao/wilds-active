@@ -3,6 +3,7 @@ algorithm_defaults = {
         'train_loader': 'standard',
         'uniform_over_groups': False,
         'eval_loader': 'standard',
+        'randaugment_n': 2,     # If we are running ERM + data augmentation
     },
     'groupDRO': {
         'train_loader': 'standard',
@@ -57,6 +58,7 @@ algorithm_defaults = {
         'scheduler': 'FixMatchLR',
         'scheduler_kwargs': {},
         'randaugment_n': 2,
+        'additional_train_transform': 'randaugment',     # Apply strong augmentation to labeled examples
     },
     'PseudoLabel': {
         'train_loader': 'standard',
@@ -65,6 +67,9 @@ algorithm_defaults = {
         'self_training_labeled_weight': 1,
         'self_training_unlabeled_weight': 1,
         'self_training_threshold': 0.7,
+        'pseudolabel_T2': 0.4,
+        'randaugment_n': 2, 
+        'additional_train_transform': 'randaugment',     # Apply strong augmentation to labeled examples
     },
     'NoisyStudent': {
         'train_loader': 'standard',
@@ -72,5 +77,6 @@ algorithm_defaults = {
         'eval_loader': 'standard',
         'dropout_rate': 0.5,
         'randaugment_n': 2,
+        'additional_train_transform': 'randaugment',     # Apply strong augmentation to labeled examples
     }
 }

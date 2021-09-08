@@ -1,7 +1,8 @@
 import os
 from tqdm import tqdm
+import math
 import torch
-from utils import save_model, save_pred, get_pred_prefix, get_model_prefix
+from utils import save_model, save_pred, get_pred_prefix, get_model_prefix, InfiniteDataIterator
 import torch.autograd.profiler as profiler
 from configs.supported import process_outputs_functions
 from algorithms.metalearning import sample_metalearning_task
@@ -10,7 +11,7 @@ from wilds.common.data_loaders import get_train_loader, get_eval_loader
 from wilds.datasets.wilds_dataset import WILDSSubset
 
 def run_metalearning_epoch(algorithm, dataset, general_logger, epoch, config, train=False, labeled_set=None, unlabeled_dataset=None):
-    if general_logger and dataset['verbose']:
+    if dataset['verbose']:
         general_logger.write(f"\n{dataset['name']}:\n")
 
     # meta-training on tasks
@@ -62,16 +63,16 @@ def run_metalearning_epoch(algorithm, dataset, general_logger, epoch, config, tr
         )
 
     # log after updating the scheduler in case it needs to access the internal logs
-    if general_logger: log_results(algorithm, dataset, general_logger, epoch, 0)
+    log_results(algorithm, dataset, general_logger, epoch, 0)
     results['epoch'] = epoch
     dataset['eval_logger'].log(results)
-    if general_logger and dataset['verbose']:
+    if dataset['verbose']:
         general_logger.write('Epoch eval:\n')
         general_logger.write(results_str)
     return results, epoch_y_pred, None
     
 def run_epoch(algorithm, dataset, general_logger, epoch, config, train, unlabeled_dataset=None):
-    if general_logger and dataset['verbose']:
+    if dataset['verbose']:
         general_logger.write(f"\n{dataset['name']}:\n")
 
     if train:
@@ -93,33 +94,24 @@ def run_epoch(algorithm, dataset, general_logger, epoch, config, train, unlabele
     assert loader_name in dataset, "A data loader must be defined for the dataset."
     if unlabeled_dataset:
         assert loader_name in unlabeled_dataset, "A data loader must be defined for the dataset."
-    
-    ## if itertools.cycle is the issue, here's a loop to fix it
-    def cycle(iterable):
-        iterator = iter(iterable)
-        while True:
-            try:
-                yield next(iterator)
-            except StopIteration:
-                iterator = iter(iterable)
 
-    batches = (
-        zip(cycle(dataset[loader_name]), unlabeled_dataset[loader_name]) if unlabeled_dataset
-        else dataset[loader_name]
-    )
+    batches = dataset[loader_name]
     if config.progress_bar:
         batches = tqdm(batches)
+    last_batch_idx = len(batches)-1
+
+    if unlabeled_dataset: unlabeled_batches = InfiniteDataIterator(unlabeled_dataset[loader_name])
 
     # Using enumerate(iterator) can sometimes leak memory in some environments (!)
     # so we manually increment batch_idx
     batch_idx = 0
-    for batch in batches:
+    for labeled_batch in batches:
         algo_fn = algorithm.update if train else algorithm.evaluate
         if unlabeled_dataset:
-            labeled_batch, unlabeled_batch = batch
-            batch_results = algo_fn(labeled_batch, unlabeled_batch)
+            unlabeled_batch = next(unlabeled_batches)
+            batch_results = algo_fn(labeled_batch, unlabeled_batch, is_epoch_end=(batch_idx==last_batch_idx))
         else:
-            batch_results = algo_fn(batch)
+            batch_results = algo_fn(labeled_batch, is_epoch_end=(batch_idx==last_batch_idx))
 
         # These tensors are already detached, but we need to clone them again
         # Otherwise they don't get garbage collected properly in some versions
@@ -133,8 +125,13 @@ def run_epoch(algorithm, dataset, general_logger, epoch, config, train, unlabele
         epoch_metadata.append(batch_results['metadata'].clone().detach())
         if 'unlabeled_y_pseudo' in batch_results: epoch_y_pseudo.append(batch_results['unlabeled_y_pseudo'].clone().detach())
         
-        if general_logger and train and (batch_idx+1) % config.log_every==0:
-            log_results(algorithm, dataset, general_logger, epoch, batch_idx)
+        if train: 
+            effective_batch_idx = (batch_idx + 1) / config.gradient_accumulation_steps
+        else: 
+            effective_batch_idx = batch_idx + 1
+
+        if train and effective_batch_idx % config.log_every==0:
+            log_results(algorithm, dataset, general_logger, epoch, math.ceil(effective_batch_idx))
 
         batch_idx += 1
 
@@ -154,11 +151,11 @@ def run_epoch(algorithm, dataset, general_logger, epoch, config, train, unlabele
             log_access=(not train))
 
     # log after updating the scheduler in case it needs to access the internal logs
-    if general_logger: log_results(algorithm, dataset, general_logger, epoch, batch_idx)
+    log_results(algorithm, dataset, general_logger, epoch, math.ceil(effective_batch_idx))
 
     results['epoch'] = epoch
     dataset['eval_logger'].log(results)
-    if general_logger and dataset['verbose']:
+    if dataset['verbose']:
         general_logger.write('Epoch eval:\n')
         general_logger.write(results_str)
 
@@ -270,12 +267,11 @@ def infer_predictions(model, loader, config):
         y_pred.append(output.clone().detach())
     return torch.cat(y_pred, 0).to(torch.device('cpu'))
 
-
-def log_results(algorithm, dataset, general_logger, epoch, batch_idx):
+def log_results(algorithm, dataset, general_logger, epoch, effective_batch_idx):
     if algorithm.has_log:
         log = algorithm.get_log()
         log['epoch'] = epoch
-        log['batch'] = batch_idx
+        log['batch'] = effective_batch_idx
         dataset['algo_logger'].log(log)
         if dataset['verbose']:
             general_logger.write(algorithm.get_pretty_log_str())

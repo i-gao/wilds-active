@@ -9,6 +9,8 @@ import torch
 import pandas as pd
 import re
 
+from torch.utils.data import DataLoader
+
 from algorithms.algorithm import Algorithm
 
 from collections import defaultdict
@@ -277,9 +279,11 @@ def log_config(config, logger):
     logger.write('\n')
 
 def initialize_wandb(config):
-    name = config.dataset + '_' + config.algorithm + '_' + config.log_dir
-    wandb.init(name=name,
-               project=f"wilds")
+    if config.wandb_api_key_path is not None:
+        with open(config.wandb_api_key_path, "r") as f:
+            os.environ["WANDB_API_KEY"] = f.read().strip()
+
+    wandb.init(**config.wandb_kwargs)
     wandb.config.update(config)
 
 def configure_split_dict(split, data, split_name, verbose, grouper, batch_size, config, get_train=False, get_eval=False):
@@ -311,9 +315,12 @@ def configure_split_dict(split, data, split_name, verbose, grouper, batch_size, 
 
     # Loggers
     split_dict['eval_logger'] = BatchLogger(
-        os.path.join(config.log_dir, f'{split}_eval.csv'), mode=config.mode, use_wandb=(config.use_wandb and verbose))
+        os.path.join(config.log_dir, f'{split}_eval.csv'), mode=config.mode, use_wandb=config.use_wandb
+    )
     split_dict['algo_logger'] = BatchLogger(
-        os.path.join(config.log_dir, f'{split}_algo.csv'), mode=config.mode, use_wandb=(config.use_wandb and verbose))
+        os.path.join(config.log_dir, f'{split}_algo.csv'), mode=config.mode, use_wandb=config.use_wandb
+    )
+
     return split_dict
 
 def save_pred(y_pred, csv_path):
@@ -343,3 +350,25 @@ def get_model_prefix(dataset, config):
         config.log_dir,
         f"{dataset_name}_{replicate_str}_")
     return prefix
+
+class InfiniteDataIterator:
+    """
+    Adapted from https://github.com/thuml/Transfer-Learning-Library
+
+    A data iterator that will never stop producing data
+    """
+    def __init__(self, data_loader: DataLoader):
+        self.data_loader = data_loader
+        self.iter = iter(self.data_loader)
+
+    def __next__(self):
+        try:
+            data = next(self.iter)
+        except StopIteration:
+            print("Reached the end, resetting data loader...")
+            self.iter = iter(self.data_loader)
+            data = next(self.iter)
+        return data
+
+    def __len__(self):
+        return len(self.data_loader)
