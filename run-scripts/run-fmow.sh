@@ -65,7 +65,7 @@ mkdir $dir
 
 #######
 
-cmd="CUDA_VISIBLE_DEVICES=$(seq -s, $counter 0 $(($gpus - 1))) python /juice/scr/irena/wilds-active/examples/run_expt.py --root_dir /u/scr/nlp/dro --device $(seq 0 $(($gpus - 1))) --loader_kwargs num_workers=$((4 * $gpus)) --log_dir $dir --dataset $dataset --lr $lr --weight_decay $wd --batch_size $labeled --unlabeled_batch_size $unlabeled --algorithm $algorithm $_model_flag --n_epochs $epochs --active_learning --selection_function $sf --n_shots $K $_selectby --eval_splits unlabeled_test id_val id_test --self_training_unlabeled_weight $unlabeled_weight --self_training_threshold $tau $_label_args --seed $seed $_savepred --gradient_accumulation_steps $stepevery --use_wandb --wandb_api_key_path /sailhome/irena/.ssh/wandb-api-key --wandb_kwargs entity=i-gao project=ssda group=fmow"
+cmd="CUDA_VISIBLE_DEVICES=$(seq -s, $counter 0 $(($gpus - 1))) python /juice/scr/irena/wilds-active/examples/run_expt.py --root_dir /u/scr/nlp/dro --device $(seq 0 $(($gpus - 1))) --loader_kwargs num_workers=$((4 * $gpus)) --log_dir $dir --dataset $dataset --lr $lr --weight_decay $wd --batch_size $labeled --unlabeled_batch_size $unlabeled --algorithm $algorithm $_model_flag --n_epochs $epochs --active_learning --selection_function $sf --n_shots $K $_selectby --eval_splits unlabeled_test unlabeled_test_disjoint id_test --self_training_unlabeled_weight $unlabeled_weight --self_training_threshold $tau $_label_args --seed $seed $_savepred --gradient_accumulation_steps $stepevery --use_wandb --wandb_api_key_path /sailhome/irena/.ssh/wandb-api-key --wandb_kwargs entity=i-gao project=ssda"
 
 nlp_cmd="nlprun -o ${dir}/out -n active --anaconda-environment wilds-ig --queue jag --priority standard --gpu-type titanxp --gpu-count $gpus --memory 16g \"$cmd\""
 
