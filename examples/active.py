@@ -11,9 +11,6 @@ from train import save_pseudo_if_needed
 def run_active_learning(selection_fn, datasets, grouper, config, general_logger, full_dataset=None):
     label_manager = datasets[config.target_split]['label_manager']
 
-    # Add labeled test / unlabeled test splits.
-    labeled_split_name = f"labeled_{config.target_split}_joint" if config.concat_source_labeled else f"labeled_{config.target_split}"
-    
     # First run selection function
     selection_fn.select_and_reveal(label_manager=label_manager, K=config.n_shots)
     general_logger.write(f"Total Labels Revealed: {label_manager.num_labeled}\n")
@@ -45,10 +42,10 @@ def run_active_learning(selection_fn, datasets, grouper, config, general_logger,
     # Add new splits to datasets dict
     ## Training Splits
     ### Labeled test
-    datasets[labeled_split_name] = configure_split_dict(
+    datasets[f'labeled_{config.target_split}'] = configure_split_dict(
         data=labeled_dataset,
-        split=labeled_split_name,
-        split_name=labeled_split_name,
+        split=f'labeled_{config.target_split}',
+        split_name=f'labeled_{config.target_split}',
         get_train=True,
         verbose=True,
         grouper=labeled_grouper,
@@ -111,4 +108,4 @@ def run_active_learning(selection_fn, datasets, grouper, config, general_logger,
                 None, config, None)
 
     # return names of train_split, unlabeled_split
-    return labeled_split_name, f"unlabeled_{config.target_split}_augmented"
+    return f'labeled_{config.target_split}', f"unlabeled_{config.target_split}_augmented"
