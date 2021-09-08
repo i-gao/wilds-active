@@ -90,7 +90,7 @@ def initialize_model(config, d_out, is_featurizer=False):
     # This has only been tested on some models (mostly vision), so run this code iff we're sure it works
     # We've already loaded pretrained weights for bert-based models using the transformers library 
     if config.model not in ('code-gpt-py', 'logistic_regression', 'unet-seq', 'fasterrcnn') and 'bert' not in config.model:
-        if (config.pretrained_model_path and os.path.exists(config.pretrained_model_path): 
+        if config.pretrained_model_path and os.path.exists(config.pretrained_model_path): 
             try:
                 if type(model) is tuple: 
                     # load both featurizer and classifier

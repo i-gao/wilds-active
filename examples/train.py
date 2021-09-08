@@ -111,7 +111,7 @@ def run_epoch(algorithm, dataset, general_logger, epoch, config, train, unlabele
             unlabeled_batch = next(unlabeled_batches)
             batch_results = algo_fn(labeled_batch, unlabeled_batch, is_epoch_end=(batch_idx==last_batch_idx))
         else:
-            batch_results = algo_fn(batch, is_epoch_end=(batch_idx==last_batch_idx))
+            batch_results = algo_fn(labeled_batch, is_epoch_end=(batch_idx==last_batch_idx))
 
         # These tensors are already detached, but we need to clone them again
         # Otherwise they don't get garbage collected properly in some versions

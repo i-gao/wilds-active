@@ -156,7 +156,7 @@ class SingleModelAlgorithm(GroupAlgorithm):
         # return only this batch's results
         return self.sanitize_dict(results)
 
-    def _update(self, results):
+    def _update(self, results, should_step=False):
         """
         Computes the objective and updates the model.
         Also updates the results dictionary yielded by process_batch().
