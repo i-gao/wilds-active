@@ -2,6 +2,7 @@ from wilds.datasets.wilds_dataset import WILDSSubset
 from wilds.common.grouper import CombinatorialGrouper
 import torch
 import numpy as np
+import pandas as pd
 from utils import configure_split_dict
 from dataset_modifications import fmow_deduplicate_locations
 from copy import copy
@@ -82,6 +83,9 @@ def run_active_learning(selection_fn, datasets, grouper, config, general_logger,
             negative_indices=label_manager.labeled_indices, 
             superset_indices=label_manager.unlabeled_indices, 
             config=config)
+        # dump indices to file
+        pd.DataFrame(disjoint_unlabeled_indices).to_csv(f'{config.log_dir}/disjoint_indices.csv', index=False, header=False)
+        # build disjoint split        
         disjoint_eval_dataset = WILDSSubset(
             full_dataset,
             disjoint_unlabeled_indices,

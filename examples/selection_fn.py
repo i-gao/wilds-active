@@ -47,7 +47,7 @@ class SelectionFunction():
         self.is_trainable = is_trainable
         self.config = config
         self._prior_selections = [] # loaded selections from file
-        self.log_dir = self.config.log_dir
+        self.log_dir = config.log_dir
         self.mode = 'w'
 
     # def update(self):
