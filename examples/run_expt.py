@@ -66,7 +66,8 @@ def main():
     # Active Learning
     parser.add_argument('--active_learning', type=parse_bool, const=True, nargs='?')
     parser.add_argument('--target_split', default="test", type=str, help='Split from which to sample labeled examples and use as unlabeled data for self-training.')
-    parser.add_argument('--concat_source_labeled', type=parse_bool, const=True, nargs='?', default=False, help="Concatenate labeled source examples to labeled target examples.")
+    parser.add_argument('--use_target_labeled', type=parse_bool, const=True, nargs='?', default=True, help="If false, we sample target labels and remove them from the eval set, but don't actually train on them.")
+    parser.add_argument('--use_source_labeled', type=parse_bool, const=True, nargs='?', default=False, help="Train on labeled source examples (perhaps in addition to labeled target examples.)")
     parser.add_argument('--upsample_target_labeled', type=parse_bool, const=True, nargs='?', default=False, help="If concatenating source labels, upsample target labels s.t. our labeled batches are 1/2 src and 1/2 tgt.")
     parser.add_argument('--selection_function', choices=supported.selection_functions)
     parser.add_argument('--selection_function_kwargs', nargs='*', action=ParseKwargs, default={}, help="keyword arguments for selection fn passed as key1=value1 key2=value2")

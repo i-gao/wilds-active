@@ -18,6 +18,7 @@ def populate_defaults(config):
             )
 
     assert set(config.save_splits).issubset(config.eval_splits), 'splits we save preds for must be a subset of eval_splits'
+    assert config.use_target_labeled or config.use_source_labeled, 'Must use some labeled examples. Maybe you meant to set --self_training_labeled_weight to 0?'
 
     # implied defaults from choice of dataset
     config = populate_config(

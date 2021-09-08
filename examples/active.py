@@ -16,11 +16,16 @@ def run_active_learning(selection_fn, datasets, grouper, config, general_logger,
     general_logger.write(f"Total Labels Revealed: {label_manager.num_labeled}\n")
     
     # Concatenate labeled source examples to labeled target examples
-    if config.concat_source_labeled:
+    if config.use_source_labeled:
         assert full_dataset is not None
+        # We allow optionally ignoring the target examples entirely
+        if not config.use_target_labeled: 
+            indices = datasets['train']['dataset'].indices
+        else:
+            indices = np.concatenate((label_manager.labeled_indices, datasets['train']['dataset'].indices)).astype(int) # target points at front
         labeled_dataset = WILDSSubset(
             full_dataset,
-            np.concatenate((label_manager.labeled_indices, datasets['train']['dataset'].indices)).astype(int), # target points at front
+            indices,
             label_manager.labeled_train_transform
         ) 
     else:

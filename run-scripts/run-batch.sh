@@ -53,13 +53,13 @@ function run_expt() {
         _label_args=""
         _label_runstr="${labels}-${sf}-${K}-by-${selectby}"
     elif [ $labels == "src+tgt" ]; then
-        _label_args="--concat_source_labeled"
+        _label_args="--use_source_labeled"
         _label_runstr="${labels}-${sf}-${K}-by-${selectby}"
     elif [ $labels == "src+tgt-uniform" ]; then
-        _label_args="--concat_source_labeled --upsample_target_labeled"
+        _label_args="--use_source_labeled --upsample_target_labeled"
         _label_runstr="${labels}-${sf}-${K}-by-${selectby}"
     elif [ $labels == "src" ]; then
-        _label_args="--n_shots 0 --concat_source_labeled"
+        _label_args="--use_source_labeled --use_target_labeled False"
         _label_runstr="${labels}"
     elif [ $labels == "None" ]; then
         _label_args="--self_training_labeled_weight 0"
