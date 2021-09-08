@@ -343,20 +343,6 @@ def main():
         train_grouper=train_grouper)
     if config.freeze_featurizer: freeze_features(algorithm)
 
-    # Load pretrained weights if specified (this can be overriden by resume)
-    if config.pretrained_model_path is not None and os.path.exists(config.pretrained_model_path):
-        # The full model name is expected to be specified, so just load.
-        try:
-            prev_epoch, _, best_val_metric = load(algorithm, config.pretrained_model_path, device=config.device)
-            epoch_offset = 0
-            logger.write(
-                (f'Initialized algorithm with pretrained weights from {config.pretrained_model_path} ')
-                + (f'previously trained to epoch {prev_epoch} ' if prev_epoch else '')
-                + (f'with previous val metric {best_val_metric} ' if best_val_metric else '')
-            )
-        except:
-            pass
-
     if config.active_learning:
         select_grouper = CombinatorialGrouper(
             dataset=full_dataset,
