@@ -43,22 +43,17 @@ fi
 
 if [ $labels == "tgt" ]; then
     _label_args=""
-    _label_runstr="${labels}-${sf}-${K}-by-${selectby}"
 elif [ $labels == "src+tgt" ]; then
     _label_args="--use_source_labeled"
-    _label_runstr="${labels}-${sf}-${K}-by-${selectby}"
 elif [ $labels == "src+tgt-uniform" ]; then
     _label_args="--use_source_labeled --upsample_target_labeled"
-    _label_runstr="${labels}-${sf}-${K}-by-${selectby}"
 elif [ $labels == "src" ]; then
-    _label_args="--use_target_labeled False --use_source_labeled"
-    _label_runstr="${labels}"
+    _label_args="--use_source_labeled --use_target_labeled False"
 elif [ $labels == "None" ]; then
     _label_args="--self_training_labeled_weight 0"
-    _label_runstr="${labels}" 
 fi
 
-runstr="${algorithm}_${_label_runstr}_lr=${lr}_wd=${wd}_labeled=${labeled}_unlabeled=${unlabeled}_seed=${seed}"
+runstr="${algorithm}_${labels}-${sf}-${K}-by-${selectby}_lr=${lr}_wd=${wd}_labeled=${labeled}_unlabeled=${unlabeled}_seed=${seed}"
 
 dir="/juice/scr/irena/active-self-training/${dataset}/${runstr}"
 mkdir $dir
