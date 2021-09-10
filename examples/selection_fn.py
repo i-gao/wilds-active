@@ -84,7 +84,7 @@ class SelectionFunction():
             reveal = reveal + self.select(label_manager, remaining, unlabeled_indices, groups, group_ids)
 
         label_manager.reveal_labels(reveal)
-        save_array(reveal, csv_path=f"{self.log_dir}/selections.csv", mode=self.mode)
+        save_array(reveal, csv_path=f"{self.log_dir}/selected_ids.csv", mode=self.mode)
 
     def select(self, label_manager, K_per_group:[int], unlabeled_indices: torch.Tensor, groups: torch.Tensor, group_ids:[int]):
         """
@@ -104,7 +104,7 @@ class SelectionFunction():
         Loads indices to select in the order saved in given csv
         """
         if path.endswith('.csv'): csvpath = path
-        else: csvpath = f'{path}/selections.csv'
+        else: csvpath = f'{path}/selected_ids.csv'
 
         try: df = pd.read_csv(csvpath, index_col=None, header=None)
         except:

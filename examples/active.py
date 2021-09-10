@@ -45,7 +45,7 @@ def run_active_learning(selection_fn, datasets, grouper, config, general_logger,
         labeled_grouper = grouper
 
     # Dump unlabeled indices to file
-    save_array(label_manager.unlabeled_indices, csv_path=f'{config.log_dir}/unlabeled_test_indices.csv')
+    save_array(label_manager.unlabeled_indices, csv_path=f'{config.log_dir}/unlabeled_test_ids.csv')
 
     # Add new splits to datasets dict
     ## Training Splits
@@ -88,7 +88,7 @@ def run_active_learning(selection_fn, datasets, grouper, config, general_logger,
             negative_indices=label_manager.labeled_indices, 
             superset_indices=label_manager.unlabeled_indices, 
             config=config)
-        save_array(disjoint_unlabeled_indices, csv_path=f'{config.log_dir}/disjoint_indices.csv')
+        save_array(disjoint_unlabeled_indices, csv_path=f'{config.log_dir}/disjoint_ids.csv')
         # build disjoint split        
         disjoint_eval_dataset = WILDSSubset(
             full_dataset,
