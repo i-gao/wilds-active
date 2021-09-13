@@ -58,7 +58,7 @@ algorithm_defaults = {
         'scheduler': 'FixMatchLR',
         'scheduler_kwargs': {},
         'randaugment_n': 2,
-        'additional_train_transform': 'randaugment',     # Apply strong augmentation to labeled examples
+        'additional_train_transform': 'weak',     # Apply weak augmentation to labeled examples
     },
     'PseudoLabel': {
         'train_loader': 'standard',
