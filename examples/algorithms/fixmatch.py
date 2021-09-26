@@ -27,7 +27,7 @@ class FixMatch(SingleModelAlgorithm):
             year={2020}
             }
     """
-    def __init__(self, config, d_out, grouper, loss, metric, n_train_steps):
+    def __init__(self, config, d_out, grouper, loss, unlabeled_loss, metric, n_train_steps):
         featurizer, classifier = initialize_model(
             config, d_out=d_out, is_featurizer=True
         )
@@ -43,12 +43,13 @@ class FixMatch(SingleModelAlgorithm):
             n_train_steps=n_train_steps,
         )
         # algorithm hyperparameters
+        self.unlabeled_loss = unlabeled_loss
         self.labeled_weight = config.self_training_labeled_weight
         self.unlabeled_weight = config.self_training_unlabeled_weight
         self.confidence_threshold = config.self_training_threshold
         if config.process_outputs_function is not None:
             self.process_outputs_function = process_outputs_functions[config.process_outputs_function]
-
+        self.soft_pseudolabels = config.soft_pseudolabels
         # Additional logging
         self.logged_fields.append("pseudolabels_kept_frac")
         self.logged_fields.append("classification_loss")
@@ -96,7 +97,11 @@ class FixMatch(SingleModelAlgorithm):
             with torch.no_grad():
                 outputs = self.model(x_weak)
                 mask = torch.max(F.softmax(outputs, -1), -1)[0] >= self.confidence_threshold
-                pseudolabels = self.process_outputs_function(outputs)
+                outputs = torch.nn.functional.softmax(outputs, dim=1)
+                if self.soft_pseudolabels:
+                    pseudolabels = outputs
+                else: 
+                    pseudolabels = self.process_outputs_function(outputs)
                 results['unlabeled_y_pseudo'] = pseudolabels
                 results['unlabeled_mask'] = mask
         
@@ -121,7 +126,7 @@ class FixMatch(SingleModelAlgorithm):
         # Pseudolabeled loss
         if 'unlabeled_y_pseudo' in results:
             mask = results['unlabeled_mask']
-            masked_loss_output = self.loss.compute_element_wise(
+            masked_loss_output = self.unlabeled_loss.compute_element_wise(
                 results['unlabeled_y_pred'],
                 results['unlabeled_y_pseudo'],
                 return_dict=False,

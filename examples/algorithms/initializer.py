@@ -20,6 +20,8 @@ def initialize_algorithm(config, datasets, train_grouper, unlabeled_dataset=None
     n_train_steps = infer_n_train_steps(train_loader, config)
     loss = losses[config.loss_function]
     metric = algo_log_metrics[config.algo_log_metric]
+    if config.soft_pseudolabels: unlabeled_loss = losses["cross_entropy_logits"]
+    else: unlabeled_loss = losses[config.loss_function]
 
     if config.algorithm == 'ERM':
         algorithm = ERM(
@@ -72,12 +74,13 @@ def initialize_algorithm(config, datasets, train_grouper, unlabeled_dataset=None
             loss=loss,
             metric=metric,
             n_train_steps=n_train_steps)
-    elif config.algorithm == 'FixMatch': # TODO: ensure that this won't run unless it's as active learning
+    elif config.algorithm == 'FixMatch':
         algorithm = FixMatch(
             config=config,
             d_out=d_out,
             grouper=train_grouper,
             loss=loss,
+            unlabeled_loss=unlabeled_loss, # soft pseudolabels = consistency regularization
             metric=metric,
             n_train_steps=n_train_steps)
     elif config.algorithm == 'PseudoLabel':
@@ -85,12 +88,10 @@ def initialize_algorithm(config, datasets, train_grouper, unlabeled_dataset=None
             config=config,
             d_out=d_out,
             grouper=train_grouper,
-            loss=loss,
+            loss=loss, # soft pseudolabels doesn't make sense here
             metric=metric,
             n_train_steps=n_train_steps)
     elif config.algorithm=='NoisyStudent':
-        if config.soft_pseudolabels: unlabeled_loss = losses["cross_entropy_logits"]
-        else: unlabeled_loss = losses[config.loss_function]
         algorithm = NoisyStudent(
             config=config,
             d_out=d_out,

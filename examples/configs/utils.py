@@ -16,6 +16,9 @@ def populate_defaults(config):
                 "Cannot pass in a value for additional_train_transform, NoisyStudent "
                 "and FixMatch already have default transformations for the training data."
             )
+    
+    if config.soft_pseudolabels:
+        assert config.algorithm != "PseudoLabel", "soft pseudolabels with pseudo-label does nothing"
 
     assert set(config.save_splits).issubset(config.eval_splits), 'splits we save preds for must be a subset of eval_splits'
     assert config.use_target_labeled or config.use_source_labeled, 'Must use some labeled examples. Maybe you meant to set --self_training_labeled_weight to 0?'
