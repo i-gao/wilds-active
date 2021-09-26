@@ -85,7 +85,7 @@ class FixMatch(SingleModelAlgorithm):
         }
         # Unlabeled examples
         if unlabeled_batch is not None:
-            (x_weak, x_strong), metadata = unlabeled_batch
+            (x_weak, x_strong), _,  metadata = unlabeled_batch
             x_weak = x_weak.to(self.device)
             x_strong = x_strong.to(self.device)
 

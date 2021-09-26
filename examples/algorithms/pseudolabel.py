@@ -87,7 +87,7 @@ class PseudoLabel(SingleModelAlgorithm):
         }
         # Unlabeled examples
         if unlabeled_batch is not None:
-            x_unlab, metadata = unlabeled_batch
+            x_unlab, _, metadata = unlabeled_batch
             x_unlab = x_unlab.to(self.device)
             g = self.grouper.metadata_to_group(metadata).to(self.device)
             results['unlabeled_metadata'] = metadata
