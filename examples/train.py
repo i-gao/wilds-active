@@ -203,6 +203,9 @@ def train(algorithm, datasets, general_logger, config, epoch_offset, best_val_me
             additional_splits = config.eval_splits
         if epoch % config.eval_additional_every == 0 or epoch+1 == config.n_epochs:
             for split in additional_splits:
+                # edge case: split is not actually a valid split in datasets
+                if datasets[split] == {}: continue 
+                # otherwise: run epoch on split and save pred/pseduo
                 if split == f'unlabeled_{config.target_split}':
                     _, y_pred, y_pseudo = epoch_fn(algorithm, datasets[split], general_logger, epoch, config, train=False, unlabeled_dataset=datasets[f'unlabeled_{config.target_split}_augmented'])
                 else:
@@ -268,6 +271,7 @@ def infer_predictions(model, loader, config):
     return torch.cat(y_pred, 0).to(torch.device('cpu'))
 
 def log_results(algorithm, dataset, general_logger, epoch, effective_batch_idx):
+    if dataset == {}: return
     if algorithm.has_log:
         log = algorithm.get_log()
         log['epoch'] = epoch
