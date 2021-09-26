@@ -6,7 +6,6 @@ import torch.nn.functional as F
 from models.initializer import initialize_model
 from algorithms.single_model_algorithm import SingleModelAlgorithm
 from configs.supported import process_outputs_functions
-from optimizer import initialize_optimizer_with_model_params
 
 class FixMatch(SingleModelAlgorithm):
     """
@@ -33,13 +32,6 @@ class FixMatch(SingleModelAlgorithm):
             config, d_out=d_out, is_featurizer=True
         )
         model = torch.nn.Sequential(featurizer, classifier)
-
-        if config.fixmatch_featurizer_lr and config.fixmatch_classifier_lr:
-            parameters_to_optimize: List[Dict] = [
-                {"params": featurizer.parameters(), "lr": config.fixmatch_featurizer_lr},
-                {"params": classifier.parameters(), "lr": config.fixmatch_classifier_lr},
-            ]
-            self.optimizer = initialize_optimizer_with_model_params(config, parameters_to_optimize)
 
         # initialize module
         super().__init__(
@@ -80,23 +72,20 @@ class FixMatch(SingleModelAlgorithm):
             - 'unlabeled_metadata': metdata tensor for the unlabeled batch
         """
         assert labeled_batch is not None or unlabeled_batch is not None
-        results = {}
         # Labeled examples
-        if labeled_batch is not None:
-            x, y_true, metadata = labeled_batch
-            x = x.to(self.device)
-            y_true = y_true.to(self.device)
-            g = self.grouper.metadata_to_group(metadata).to(self.device)
-            outputs = self.model(x)
-            # package the results
-            results['g'] = g
-            results['y_true'] = y_true
-            results['y_pred'] = outputs
-            results['metadata'] = metadata 
+        x, y_true, metadata = labeled_batch
+        x = x.to(self.device)
+        y_true = y_true.to(self.device)
+        g = self.grouper.metadata_to_group(metadata).to(self.device)
+        # package the results
+        results = {
+            'g': g,
+            'y_true': y_true,
+            'metadata': metadata
+        }
         # Unlabeled examples
         if unlabeled_batch is not None:
-            x, _, metadata = unlabeled_batch
-            x_weak, x_strong = x
+            (x_weak, x_strong), metadata = unlabeled_batch
             x_weak = x_weak.to(self.device)
             x_strong = x_strong.to(self.device)
 
@@ -110,9 +99,16 @@ class FixMatch(SingleModelAlgorithm):
                 pseudolabels = self.process_outputs_function(outputs)
                 results['unlabeled_y_pseudo'] = pseudolabels
                 results['unlabeled_mask'] = mask
-
-            outputs = self.model(x_strong)
-            results['unlabeled_y_pred'] = outputs
+        
+        # Concat and call forward
+        n_lab = x.shape[0]
+        if unlabeled_batch is not None: x_concat = torch.cat((x, x_strong), dim=0)
+        else: x_concat = x
+        outputs = self.model(x_concat)
+        results['y_pred'] = outputs[:n_lab]
+        if unlabeled_batch is not None:
+            results['unlabeled_y_pred'] = outputs[n_lab:]
+        
         return results
 
     def objective(self, results):

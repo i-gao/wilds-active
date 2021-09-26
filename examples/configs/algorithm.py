@@ -55,10 +55,10 @@ algorithm_defaults = {
         'self_training_labeled_weight': 1,
         'self_training_unlabeled_weight': 1,
         'self_training_threshold': 0.7,
-        'scheduler': 'FixMatchLR',
-        'scheduler_kwargs': {},
+        # 'scheduler': 'FixMatchLR',
+        # 'scheduler_kwargs': {},
         'randaugment_n': 2,
-        'additional_train_transform': 'weak',     # Apply weak augmentation to labeled examples
+        # 'additional_train_transform': 'weak',     # Apply weak augmentation to labeled examples
     },
     'PseudoLabel': {
         'train_loader': 'standard',
@@ -67,9 +67,10 @@ algorithm_defaults = {
         'self_training_labeled_weight': 1,
         'self_training_unlabeled_weight': 1,
         'self_training_threshold': 0.7,
-        'pseudolabel_T2': 0.4,
+        'pseudolabel_T2': 0,
+        # 'pseudolabel_T2': 0.4,
         'randaugment_n': 2, 
-        'additional_train_transform': 'randaugment',     # Apply strong augmentation to labeled examples
+        # 'additional_train_transform': 'randaugment',     # Apply strong augmentation to labeled examples
     },
     'NoisyStudent': {
         'train_loader': 'standard',

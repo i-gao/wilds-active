@@ -55,11 +55,12 @@ class PseudoLabel(SingleModelAlgorithm):
         self.logged_fields.append("classification_loss")
         self.logged_fields.append("consistency_loss")
 
-    def process_batch(self, labeled_batch=None, unlabeled_batch=None):
+    
+    def process_batch(self, labeled_batch, unlabeled_batch=None):
         """
         Args:
-            - labeled_batch: examples (x, y, m).
-            - unlabeled_batch: examples (x, _, m)
+            - labeled_batch: examples (x, y, m) 
+            - unlabeled_batch: examples (x, m)
         Returns: results, a dict containing keys:
             - 'g': groups for the labeled batch
             - 'y_true': true labels for the labeled batch
@@ -73,39 +74,44 @@ class PseudoLabel(SingleModelAlgorithm):
             - 'unlabeled_metadata': metdata tensor for the unlabeled batch
         """
         assert labeled_batch is not None or unlabeled_batch is not None
-        results = {}
         # Labeled examples
-        if labeled_batch is not None:
-            x, y_true, metadata = labeled_batch
-            x = x.to(self.device)
-            y_true = y_true.to(self.device)
-            g = self.grouper.metadata_to_group(metadata).to(self.device)
-            outputs = self.model(x)
-            # package the results
-            results['g'] = g
-            results['y_true'] = y_true
-            results['y_pred'] = outputs
-            results['metadata'] = metadata 
-
+        x, y_true, metadata = labeled_batch
+        x = x.to(self.device)
+        y_true = y_true.to(self.device)
+        g = self.grouper.metadata_to_group(metadata).to(self.device)
+        # package the results
+        results = {
+            'g': g,
+            'y_true': y_true,
+            'metadata': metadata
+        }
         # Unlabeled examples
         if unlabeled_batch is not None:
-            x, _, metadata = unlabeled_batch
-            x = x.to(self.device)
+            x_unlab, metadata = unlabeled_batch
+            x_unlab = x_unlab.to(self.device)
             g = self.grouper.metadata_to_group(metadata).to(self.device)
             results['unlabeled_metadata'] = metadata
             results['unlabeled_g'] = g
 
-            with torch.no_grad():
-                outputs = self.model(x)
-                mask = torch.max(F.softmax(outputs, -1), -1)[0] >= self.confidence_threshold
-                pseudolabels = self.process_outputs_function(outputs)
-                results['unlabeled_y_pseudo'] = pseudolabels
-                results['unlabeled_mask'] = mask
+        # Concat and call forward
+        n_lab = x.shape[0]
+        if unlabeled_batch is not None: x_concat = torch.cat((x, x_unlab), dim=0)
+        else: x_concat = x
 
-            outputs = self.model(x)
-            results['unlabeled_y_pred'] = outputs
+        outputs = self.model(x_concat)
+        results['y_pred'] = outputs[:n_lab]
+
+        if unlabeled_batch is not None:
+            logits = outputs[n_lab:]
+            results['unlabeled_y_pred'] = logits
+            pseudo = logits.detach().clone()
+            mask = torch.max(F.softmax(pseudo, -1), -1)[0] >= self.confidence_threshold
+            pseudolabels = self.process_outputs_function(pseudo)
+            results['unlabeled_y_pseudo'] = pseudolabels
+            results['unlabeled_mask'] = mask
+
         return results
-
+        
     def objective(self, results):
         # Labeled loss
         if 'y_pred' in results:

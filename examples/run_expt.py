@@ -98,8 +98,6 @@ def main():
     parser.add_argument('--groupby_fields', nargs='+')
     parser.add_argument('--group_dro_step_size', type=float)
     parser.add_argument('--coral_penalty_weight', type=float)
-    parser.add_argument('--fixmatch_classifier_lr', type=float)
-    parser.add_argument('--fixmatch_featurizer_lr', type=float)
     parser.add_argument('--irm_lambda', type=float)
     parser.add_argument('--irm_penalty_anneal_iters', type=int)
     parser.add_argument('--maml_first_order', type=parse_bool, const=True, nargs='?')

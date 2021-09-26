@@ -4,7 +4,6 @@ import torch.nn.functional as F
 from models.initializer import initialize_model
 from algorithms.ERM import ERM
 from algorithms.single_model_algorithm import SingleModelAlgorithm
-from optimizer import initialize_optimizer_with_model_params
 from configs.supported import process_outputs_functions
 from utils import accuracy
 import re
@@ -76,31 +75,38 @@ class NoisyStudent(SingleModelAlgorithm):
         
     def process_batch(self, labeled_batch, unlabeled_batch=None):
         assert labeled_batch is not None or unlabeled_batch is not None
-        results = {}
         # Labeled examples
-        if labeled_batch is not None:
-            x, y_true, metadata = labeled_batch
-            x = x.to(self.device)
-            y_true = y_true.to(self.device)
-            g = self.grouper.metadata_to_group(metadata).to(self.device)
-            outputs = self.model(x)
-            # package the results
-            results['g'] = g
-            results['y_true'] = y_true
-            results['y_pred'] = outputs
-            results['metadata'] = metadata 
-        # Unlabeled examples
+        x, y_true, metadata = labeled_batch
+        x = x.to(self.device)
+        y_true = y_true.to(self.device)
+        g = self.grouper.metadata_to_group(metadata).to(self.device)
+        # package the results
+        results = {
+            'g': g,
+            'y_true': y_true,
+            'metadata': metadata
+        }
+
+        # Unlabeled examples with pseudolabels
         if unlabeled_batch is not None:
-            x, y_pseudo, y_true, metadata = unlabeled_batch # x should be strongly augmented
-            x = x.to(self.device)
+            x_unlab, y_pseudo, y_true, metadata = unlabeled_batch # x should be strongly augmented
+            x_unlab = x_unlab.to(self.device)
             g = self.grouper.metadata_to_group(metadata).to(self.device)
             y_pseudo = y_pseudo.to(self.device)
-            outputs = self.model(x)
             results['unlabeled_metadata'] = metadata
             results['unlabeled_y_pseudo'] = y_pseudo 
-            results['unlabeled_y_true'] = y_pseudo 
-            results['unlabeled_y_pred'] = outputs
+            results['unlabeled_y_true'] = y_true
             results['unlabeled_g'] = g
+
+        # Concat and call forward
+        n_lab = x.shape[0]
+        if unlabeled_batch is not None: x_concat = torch.cat((x, x_unlab), dim=0)
+        else: x_concat = x
+        outputs = self.model(x_concat)
+        results['y_pred'] = outputs[:n_lab]
+        if unlabeled_batch is not None:
+            results['unlabeled_y_pred'] = outputs[n_lab:]
+
         return results
 
     def objective(self, results):
