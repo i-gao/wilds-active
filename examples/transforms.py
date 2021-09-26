@@ -12,9 +12,8 @@ from data_augmentation.randaugment import FIX_MATCH_AUGMENTATION_POOL, RandAugme
 _DEFAULT_IMAGE_TENSOR_NORMALIZATION_MEAN = [0.485, 0.456, 0.406]
 _DEFAULT_IMAGE_TENSOR_NORMALIZATION_STD = [0.229, 0.224, 0.225]
 
-
 def initialize_transform(
-    transform_name, config, dataset, is_training, additional_transform_name=None
+    transform_name, config, dataset, is_training, additional_transform=None
 ):
     """
     By default, transforms should take in `x` and return `transformed_x`.
@@ -30,15 +29,15 @@ def initialize_transform(
     should_rgb_transform = False
     if transform_name == "image_base":
         normalize = True
-        transform_steps = get_image_base_transform_steps(config, dataset)
+        base_transform_steps = get_image_base_transform_steps(config, dataset)
     elif transform_name == "image_resize":
         normalize = True
-        transform_steps = get_image_resize_transform_steps(
+        base_transform_steps = get_image_resize_transform_steps(
             config, dataset
         )
     elif transform_name == "image_resize_and_center_crop":
         normalize = True
-        transform_steps = get_image_resize_and_center_crop_transform_steps(
+        base_transform_steps = get_image_resize_and_center_crop_transform_steps(
             config, dataset
         )
     elif transform_name == "poverty":
@@ -46,7 +45,7 @@ def initialize_transform(
             return None
         normalize = False
         should_rgb_transform = True
-        transform_steps = get_poverty_train_transform_steps()
+        base_transform_steps = get_poverty_train_transform_steps()
     else:
         raise ValueError(f"{transform_name} not recognized")
 
@@ -54,25 +53,27 @@ def initialize_transform(
         _DEFAULT_IMAGE_TENSOR_NORMALIZATION_MEAN,
         _DEFAULT_IMAGE_TENSOR_NORMALIZATION_STD,
     )
-    if additional_transform_name == "fixmatch":
-        transformations = add_fixmatch_transform(
-            config, dataset, transform_steps, default_normalization
+
+    ## Additional transforms    
+    ## Optionally layer on stochastic transforms
+    additional_transform_functions = {
+        'randaugment': add_rand_augment_transform,
+        'weak': add_weak_transform,
+        None: add_no_transform, # adds no additional transform; just stacks the base transform steps + normalization
+    } 
+    if type(additional_transform) == list and len(additional_transform) == 1: 
+        additional_transform = additional_transform[0]
+    
+    if type(additional_transform) == list: 
+        # Has the loader return tuples of differently augmented views of x, e.g. for fixmatch
+        transformations = tuple(
+            additional_transform_functions[name](config, dataset, base_transform_steps, normalize, default_normalization) for name in additional_transform
         )
         transform = MultipleTransforms(transformations)
-    elif additional_transform_name == "randaugment":
-        transform = add_rand_augment_transform(
-            config, dataset, transform_steps, default_normalization
-        )
-    elif additional_transform_name == "weak":
-        transform = add_weak_transform(
-            config, dataset, transform_steps, default_normalization
-        )
     else:
-        transform_steps.append(transforms.ToTensor())
-        if normalize:
-            transform_steps.append(default_normalization)
-        transform = transforms.Compose(transform_steps)
-
+        # Return a single x
+        transform = additional_transform_functions[additional_transform](config, dataset, base_transform_steps, normalize, default_normalization)  
+    
     if should_rgb_transform:
         transform = apply_rgb_transform(transform)
 
@@ -196,14 +197,15 @@ def apply_rgb_transform(transform):
 
     return transforms.Lambda(lambda x: transform_rgb(x))
 
+def add_no_transform(config, dataset, base_transform_steps, normalize, normalization_transform):
+    # No stochastic transforms
+    transform_steps = copy.deepcopy(base_transform_steps)
+    transform_steps.append(transforms.ToTensor())
+    if normalize:
+        transform_steps.append(normalization_transform)
+    return transforms.Compose(transform_steps)
 
-def add_fixmatch_transform(config, dataset, base_transform_steps, normalization):
-    return (
-        add_weak_transform(config, dataset, base_transform_steps, normalization),
-        add_rand_augment_transform(config, dataset, base_transform_steps, normalization)
-    )
-
-def add_weak_transform(config, dataset, base_transform_steps, normalization):
+def add_weak_transform(config, dataset, base_transform_steps, normalize, normalization_transform):
     # Adapted from https://github.com/YBZh/Bridging_UDA_SSL
     target_resolution = _get_target_resolution(config, dataset)
     weak_transform_steps = copy.deepcopy(base_transform_steps)
@@ -214,12 +216,13 @@ def add_weak_transform(config, dataset, base_transform_steps, normalization):
                 size=target_resolution,
             ),
             transforms.ToTensor(),
-            normalization,
         ]
     )
+    if normalize:
+        weak_transform_steps.append(normalization_transform)
     return transforms.Compose(weak_transform_steps)
 
-def add_rand_augment_transform(config, dataset, base_transform_steps, normalization):
+def add_rand_augment_transform(config, dataset, base_transform_steps, normalize, normalization_transform):
     # Adapted from https://github.com/YBZh/Bridging_UDA_SSL
     target_resolution = _get_target_resolution(config, dataset)
     strong_transform_steps = copy.deepcopy(base_transform_steps)
@@ -234,9 +237,10 @@ def add_rand_augment_transform(config, dataset, base_transform_steps, normalizat
                 augmentation_pool=FIX_MATCH_AUGMENTATION_POOL,
             ),
             transforms.ToTensor(),
-            normalization,
         ]
     )
+    if normalize:
+        strong_transform_steps.append(normalization_transform)
     return transforms.Compose(strong_transform_steps)
 
 def _get_target_resolution(config, dataset):

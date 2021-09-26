@@ -58,8 +58,8 @@ algorithm_defaults = {
         # 'scheduler': 'FixMatchLR',
         # 'scheduler_kwargs': {},
         'randaugment_n': 2,
-        # 'additional_labeled_transform': 'weak',     # Apply weak augmentation to labeled examples
-        # 'additional_unlabeled_transform': None,     # Special FixMatch transform is hard-coded to apply
+        'additional_labeled_transform': 'weak',     # Apply weak augmentation to labeled examples
+        'additional_unlabeled_transform': ['weak', 'randaugment'],  # pseudolabels generated on weak, prediction on strong
     },
     'PseudoLabel': {
         'train_loader': 'standard',
@@ -71,8 +71,8 @@ algorithm_defaults = {
         'pseudolabel_T2': 0,                       # No scheduling
         # 'pseudolabel_T2': 0.4,
         'randaugment_n': 2, 
-        # 'additional_labeled_transform': None,     # Normally, no augmentations
-        # 'additional_unlabeled_transform': None,     # Normally, no augmentations
+        'additional_labeled_transform': None,     # Normally, no augmentations
+        'additional_unlabeled_transform': None,     # Normally, no augmentations
     },
     'NoisyStudent': {
         'train_loader': 'standard',

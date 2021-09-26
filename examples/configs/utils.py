@@ -9,12 +9,7 @@ def populate_defaults(config):
     of other hyperparameters."""
     assert config.dataset is not None, 'dataset must be specified'
     assert config.algorithm is not None, 'algorithm must be specified'
-    
-    if config.algorithm == 'NoisyStudent': 
-        assert (config.additional_labeled_transform == 'randaugment') and (config.additional_unlabeled_transform == 'randaugment')
-    elif config.algorithm == 'FixMatch':
-        assert (config.additional_unlabeled_transform is None), 'FixMatch has a special fixmatch transform that will always be applied.'
-    
+        
     if config.soft_pseudolabels:
         assert config.algorithm != "PseudoLabel", "soft pseudolabels with pseudo-label does nothing"
 
@@ -69,6 +64,9 @@ def populate_defaults(config):
         ] 
     for field in required_fields:
         assert getattr(config, field) is not None, f"Must manually specify {field} for this setup."
+
+    if config.algorithm == 'FixMatch':
+        assert (len(config.additional_unlabeled_transform) == 2), 'FixMatch needs two views of the same x to generate pseudolabels and predictions on the fly.'
 
     return config
 

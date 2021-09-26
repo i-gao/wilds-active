@@ -20,7 +20,7 @@ import wilds
 from wilds.common.data_loaders import get_train_loader, get_eval_loader
 from wilds.common.grouper import CombinatorialGrouper
 
-from utils import set_seed, Logger, log_config, ParseKwargs, load, initialize_wandb, log_group_data, parse_bool, get_model_prefix, configure_split_dict, freeze_features
+from utils import set_seed, Logger, log_config, ParseKwargs, load, initialize_wandb, log_group_data, parse_bool, parse_none, get_model_prefix, configure_split_dict, freeze_features
 from train import train, evaluate, infer_predictions
 from algorithms.initializer import initialize_algorithm, infer_d_out, infer_n_train_steps
 from active import run_active_learning
@@ -85,8 +85,8 @@ def main():
 
     # Transforms
     parser.add_argument('--transform', choices=supported.transforms)
-    parser.add_argument('--additional_labeled_transform', choices=supported.additional_transforms)
-    parser.add_argument('--additional_unlabeled_transform', choices=supported.additional_transforms)
+    parser.add_argument('--additional_labeled_transform', type=parse_none, choices=supported.additional_transforms)
+    parser.add_argument('--additional_unlabeled_transform', type=parse_none, nargs='+', choices=supported.additional_transforms)
     parser.add_argument('--target_resolution', nargs='+', type=int, help='The input resolution that images will be resized to before being passed into the model. For example, use --target_resolution 224 224 for a standard ResNet.')
     parser.add_argument('--resize_scale', type=float)
     parser.add_argument('--max_token_length', type=int)
@@ -225,7 +225,7 @@ def main():
         transform_name=config.transform,
         config=config,
         dataset=full_dataset,
-        additional_transform_name=config.additional_labeled_transform,
+        additional_transform=config.additional_labeled_transform,
         is_training=True)
     eval_transform = initialize_transform(
         transform_name=config.transform,
@@ -234,16 +234,16 @@ def main():
         is_training=False)
         
     # Define any special transforms for the algorithms that use unlabeled data
-    if config.algorithm == "FixMatch":
-        # For FixMatch, we need our loader to return batches in the form ((x_weak, x_strong), m)
-        # We do this by initializing a special transform function
-        unlabeled_train_transform = initialize_transform(
-            config.transform, config, full_dataset, is_training=True, additional_transform_name="fixmatch"
-        )
-    else:
-        unlabeled_train_transform = initialize_transform(
-            config.transform, config, full_dataset, is_training=True, additional_transform_name=config.additional_unlabeled_transform
-        )
+    # if config.algorithm == "FixMatch":
+    #     # For FixMatch, we need our loader to return batches in the form ((x_weak, x_strong), m)
+    #     # We do this by initializing a special transform function
+    #     unlabeled_train_transform = initialize_transform(
+    #         config.transform, config, full_dataset, is_training=True, additional_transform="fixmatch"
+    #     )
+    # else:
+    unlabeled_train_transform = initialize_transform(
+        config.transform, config, full_dataset, is_training=True, additional_transform=config.additional_unlabeled_transform
+    )
         
     train_grouper = CombinatorialGrouper(
         dataset=full_dataset,
@@ -296,7 +296,7 @@ def main():
                 config=config,
                 dataset=full_dataset,
                 is_training=True,
-                additional_transform_name="weak"
+                additional_transform="weak"
             )
             unlabeled_split_dataset = full_dataset.get_subset(split, transform=weak_transform, frac=config.frac)
             sequential_loader = get_eval_loader(

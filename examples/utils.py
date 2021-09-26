@@ -86,6 +86,12 @@ def parse_bool(v):
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
+def parse_none(v):
+    if v.lower()=='none':
+        return None
+    else:
+        return v
+
 def save_model(algorithm, epoch, best_val_metric, path):
     state = {}
     state['algorithm'] = algorithm.state_dict()
