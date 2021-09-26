@@ -85,7 +85,8 @@ def main():
 
     # Transforms
     parser.add_argument('--transform', choices=supported.transforms)
-    parser.add_argument('--additional_train_transform', choices=supported.additional_transforms)
+    parser.add_argument('--additional_labeled_transform', choices=supported.additional_transforms)
+    parser.add_argument('--additional_unlabeled_transform', choices=supported.additional_transforms)
     parser.add_argument('--target_resolution', nargs='+', type=int, help='The input resolution that images will be resized to before being passed into the model. For example, use --target_resolution 224 224 for a standard ResNet.')
     parser.add_argument('--resize_scale', type=float)
     parser.add_argument('--max_token_length', type=int)
@@ -224,7 +225,7 @@ def main():
         transform_name=config.transform,
         config=config,
         dataset=full_dataset,
-        additional_transform_name=config.additional_train_transform,
+        additional_transform_name=config.additional_labeled_transform,
         is_training=True)
     eval_transform = initialize_transform(
         transform_name=config.transform,
@@ -239,12 +240,10 @@ def main():
         unlabeled_train_transform = initialize_transform(
             config.transform, config, full_dataset, is_training=True, additional_transform_name="fixmatch"
         )
-    elif config.algorithm == "PseudoLabel":
-        unlabeled_train_transform = initialize_transform(
-            config.transform, config, full_dataset, is_training=True, additional_transform_name="randaugment"
-        )
     else:
-        unlabeled_train_transform = train_transform
+        unlabeled_train_transform = initialize_transform(
+            config.transform, config, full_dataset, is_training=True, additional_transform_name=config.additional_unlabeled_transform
+        )
         
     train_grouper = CombinatorialGrouper(
         dataset=full_dataset,

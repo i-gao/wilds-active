@@ -10,12 +10,10 @@ def populate_defaults(config):
     assert config.dataset is not None, 'dataset must be specified'
     assert config.algorithm is not None, 'algorithm must be specified'
     
-    if config.additional_train_transform is not None:
-        if config.algorithm in ["NoisyStudent", "FixMatch"]:
-            raise ValueError(
-                "Cannot pass in a value for additional_train_transform, NoisyStudent "
-                "and FixMatch already have default transformations for the training data."
-            )
+    if config.algorithm == 'NoisyStudent': 
+        assert (config.additional_labeled_transform == 'randaugment') and (config.additional_unlabeled_transform == 'randaugment')
+    elif config.algorithm == 'FixMatch':
+        assert (config.additional_unlabeled_transform is None), 'FixMatch has a special fixmatch transform that will always be applied.'
     
     if config.soft_pseudolabels:
         assert config.algorithm != "PseudoLabel", "soft pseudolabels with pseudo-label does nothing"
