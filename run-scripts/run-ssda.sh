@@ -22,8 +22,9 @@ if [ $dataset == "fmow" ]; then
 elif [ $dataset == "waterbirds" ]; then
     lr=1e-5
     wd=1
-    labeled=16
-    unlabeled=56
+    labeled=16  # 128
+    unlabeled=112 # 128 * 7 = 896
+    stepevery=8
 elif [ $dataset == "celebA" ]; then
     lr=3e-5
     labeled=16
