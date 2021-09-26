@@ -68,7 +68,7 @@ class LinearScheduleWithWarmupAndThreshold():
         self.max_value = max_value
         self.T1 = last_warmup_step
         self.T2 = threshold_step
-        assert (0 <= self.T1) and (self.T1 < self.T2)
+        assert (0 <= self.T1) and (self.T1 <= self.T2)
 
         # internal tracker of which step we're on
         self.current_step = 0
