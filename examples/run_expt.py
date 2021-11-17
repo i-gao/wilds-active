@@ -35,6 +35,9 @@ def main():
     ''' set default hyperparams in default_hyperparams.py '''
     parser = argparse.ArgumentParser()
 
+    # TODO refactor
+    parser.add_argument('--only_group', type=int, help='If set to an int, the dataset (and splits) will be culled down to only examples in said group.')
+
     # Required arguments
     parser.add_argument('-d', '--dataset', choices=wilds.supported_datasets, required=True)
     parser.add_argument('--algorithm', required=True, choices=supported.algorithms)
@@ -265,6 +268,10 @@ def main():
             split,
             frac=config.frac,
             transform=transform)
+        
+        if config.only_group is not None:
+            groups = train_grouper.metadata_to_group(data.metadata_array)
+            data.indices = data.indices[groups == config.only_group]
 
         datasets[split] = configure_split_dict(
             data=data,
@@ -299,6 +306,10 @@ def main():
                 additional_transform="weak"
             )
             unlabeled_split_dataset = full_dataset.get_subset(split, transform=weak_transform, frac=config.frac)
+            if config.only_group is not None:
+                groups = train_grouper.metadata_to_group(unlabeled_split_dataset.metadata_array)
+                unlabeled_split_dataset.indices = unlabeled_split_dataset.indices[groups == config.only_group]
+
             sequential_loader = get_eval_loader(
                 loader=config.eval_loader,
                 dataset=unlabeled_split_dataset,
