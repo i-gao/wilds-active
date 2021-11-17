@@ -36,7 +36,8 @@ def main():
     parser = argparse.ArgumentParser()
 
     # TODO refactor
-    parser.add_argument('--only_group', type=int, help='If set to an int, the dataset (and splits) will be culled down to only examples in said group.')
+    parser.add_argument('--filterby_fields',  nargs='+', help='Defines a grouper used to filter examples on.')
+    parser.add_argument('--filter', type=int, help='If set to an int, the dataset (and splits) will be filtered to only examples in said group, as defined by a grouper on filterby_fields.')
 
     # Required arguments
     parser.add_argument('-d', '--dataset', choices=wilds.supported_datasets, required=True)
@@ -269,9 +270,12 @@ def main():
             frac=config.frac,
             transform=transform)
         
-        if config.only_group is not None:
-            groups = train_grouper.metadata_to_group(data.metadata_array)
-            data.indices = data.indices[groups == config.only_group]
+        if config.filter is not None:
+            filter_grouper = CombinatorialGrouper(
+                dataset=full_dataset,
+                groupby_fields=config.filterby_fields)
+            groups = filter_grouper.metadata_to_group(data.metadata_array)
+            data.indices = data.indices[groups == config.filter]
 
         datasets[split] = configure_split_dict(
             data=data,
@@ -306,9 +310,9 @@ def main():
                 additional_transform="weak"
             )
             unlabeled_split_dataset = full_dataset.get_subset(split, transform=weak_transform, frac=config.frac)
-            if config.only_group is not None:
-                groups = train_grouper.metadata_to_group(unlabeled_split_dataset.metadata_array)
-                unlabeled_split_dataset.indices = unlabeled_split_dataset.indices[groups == config.only_group]
+            if config.filter is not None:
+                groups = filter_grouper.metadata_to_group(unlabeled_split_dataset.metadata_array)
+                unlabeled_split_dataset.indices = unlabeled_split_dataset.indices[groups == config.filter]
 
             sequential_loader = get_eval_loader(
                 loader=config.eval_loader,
