@@ -34,8 +34,7 @@ algorithm_defaults = {
         'maml_first_order': True,
         'metalearning_kwargs': {
             'n_adapt_steps': 5,
-            'n_eval_examples': 16,
-            'n_groups_task': 1
+            'n_eval_examples': 16
         }
     },
     'ANIL': {
@@ -44,8 +43,7 @@ algorithm_defaults = {
         'eval_loader': 'standard',
         'metalearning_kwargs': {
             'n_adapt_steps': 5,
-            'n_eval_examples': 16,
-            'n_groups_task': 1
+            'n_eval_examples': 16
         }
     },
     'FixMatch': {

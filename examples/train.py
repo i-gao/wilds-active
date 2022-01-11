@@ -22,7 +22,6 @@ def run_metalearning_epoch(algorithm, dataset, general_logger, epoch, config, tr
                 K=config.metalearning_k,
                 M=config.metalearning_kwargs.get('n_eval_examples'),
                 grouper=algorithm.grouper,
-                n_groups_task=config.metalearning_kwargs.get('n_groups_task'),
                 support_set=dataset['dataset'],
                 labeled_set=labeled_set
             )
@@ -36,7 +35,6 @@ def run_metalearning_epoch(algorithm, dataset, general_logger, epoch, config, tr
         K=config.metalearning_k,
         M=config.metalearning_kwargs.get('n_eval_examples'),
         grouper=None,
-        n_groups_task=None,
         support_set=dataset['dataset'],
         labeled_set=labeled_set
     )

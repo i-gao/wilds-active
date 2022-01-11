@@ -4,20 +4,19 @@ from models.initializer import initialize_model
 import learn2learn as l2l
 import numpy as np
 
-def sample_metalearning_task(K, M, grouper, n_groups_task, support_set, labeled_set=None):
+def sample_metalearning_task(K, M, grouper, support_set, labeled_set=None):
     """ 
-    Samples a task (single group), K examples from the task for training, and M examples from the task for evaluation
+    Samples metalearning (metatraining) task: K examples from the task for training, and M examples from the task for evaluation
     Args: 
-        - K -- number of labeled shots for adaptation to generate per task
-        - M -- number of unlabeled examples for evaluation per task
-        - grouper
-        - n_groups_task -- number of tasks per group
+        - K -- number of labeled shots for adaptation 
+        - M -- number of examples for evaluation after adaptation
+        - grouper -- WILDSGrouper; defined groups represent tasks
         - support_set -- the WILDSDataset to sample tasks (groups) from
         - labeled_set -- (optional) restrict labeled values to come from this WILDSDataset
     """
     if labeled_set is None: labeled_set = support_set
     if grouper is None:
-        # Sample k random points
+        # Sample random points from whatever groups
         adaptation_idx = np.random.choice(
             np.arange(len(labeled_set)),
             K, 
@@ -30,26 +29,26 @@ def sample_metalearning_task(K, M, grouper, n_groups_task, support_set, labeled_
         )
         task=None      
     else:
-        # Sample a task (a single group)
+        # Note that for all intents and purposes, labeled_set = support_set
+        # This split just handles the transductive case.
+        labeled_groups = grouper.metadata_to_group(labeled_set.metadata_array)
         support_groups = grouper.metadata_to_group(support_set.metadata_array)
+        
+        # Sample a specific group to be the task
         task = np.random.choice(
             support_groups.unique().numpy(),
-            n_groups_task,
-            replace=(len(support_groups.unique()) < n_groups_task)
-        ) 
-        labeled_groups = grouper.metadata_to_group(labeled_set.metadata_array)
-
-        labeled_task_mask = (torch.sum(torch.stack([labeled_groups == t for t in task]), 0) > 0)
-        support_task_mask = (torch.sum(torch.stack([support_groups == t for t in task]), 0) > 0)
+            1
+        )
+        # Sample (x,y | task)
         adaptation_idx = np.random.choice(
-            np.arange(len(labeled_set))[labeled_task_mask],
+            np.arange(len(labeled_set))[labeled_groups == task],
             K, 
-            replace=(torch.sum(labeled_task_mask) < K)
+            replace=(len(labeled_set) < K)
         )
         evaluation_idx = np.random.choice(
-            np.arange(len(support_set))[support_task_mask],
+            np.arange(len(support_set))[support_groups == task],
             M, 
-            replace=(torch.sum(support_task_mask) < M)
+            replace=(len(support_set) < M)
         )
     # collect tensors
     x, y, m = zip(*[labeled_set[i] for i in adaptation_idx])
