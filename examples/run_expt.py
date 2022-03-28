@@ -18,7 +18,7 @@ from wilds.common.data_loaders import get_train_loader, get_eval_loader
 from wilds.common.grouper import CombinatorialGrouper
 from wilds.datasets.unlabeled.wilds_unlabeled_dataset import WILDSPseudolabeledSubset
 
-from utils import set_seed, Logger, BatchLogger, log_config, ParseKwargs, load, initialize_wandb, log_group_data, parse_bool, get_model_prefix, move_to, save_pred
+from utils import set_seed, Logger, BatchLogger, log_config, ParseKwargs, load, initialize_wandb, log_group_data, parse_bool, get_model_prefix, move_to
 from train import train, evaluate, infer_predictions
 from algorithms.initializer import initialize_algorithm, infer_d_out
 from transforms import initialize_transform
@@ -58,6 +58,10 @@ def main():
     parser.add_argument('--unlabeled_version', default=None, type=str, help='WILDS unlabeled dataset version number.')
     parser.add_argument('--use_unlabeled_y', default=False, type=parse_bool, const=True, nargs='?', 
                         help='If true, unlabeled loaders will also the true labels for the unlabeled data. This is only available for some datasets. Used for "fully-labeled ERM experiments" in the paper. Correct functionality relies on CrossEntropyLoss using ignore_index=-100.')
+
+    # Filter what data is trained on according to another grouper
+    parser.add_argument('--filterby_fields',  nargs='+', help='Defines a grouper used to filter examples on.')
+    parser.add_argument('--filter',  nargs='+', default=None, help='Group ids (ints) to keep, as set by a grouper defined on filterby_fields. All other labeled & unlabeled examples will be discarded. Note: this affects your evaluation set too.')
 
     # Loaders
     parser.add_argument('--loader_kwargs', nargs='*', action=ParseKwargs, default={})
@@ -250,6 +254,10 @@ def main():
             dataset=[full_dataset, full_unlabeled_dataset],
             groupby_fields=config.groupby_fields
         )
+        filter_grouper = CombinatorialGrouper(
+            dataset=[full_dataset, full_unlabeled_dataset],
+            groupby_fields=config.filterby_fields
+        )
 
         # Transforms & data augmentations for unlabeled dataset
         if config.algorithm == "FixMatch":
@@ -285,6 +293,10 @@ def main():
                 additional_transform_name="weak"
             )
             unlabeled_split_dataset = full_unlabeled_dataset.get_subset(split, transform=weak_transform, frac=config.frac)
+            if config.filter is not None:
+                groups = filter_grouper.metadata_to_group(unlabeled_split_dataset.metadata_array)
+                unlabeled_split_dataset.indices = unlabeled_split_dataset.indices[torch.isin(groups, torch.Tensor(config.filter))]
+
             sequential_loader = get_eval_loader(
                 loader=config.eval_loader,
                 dataset=unlabeled_split_dataset,
@@ -330,6 +342,10 @@ def main():
             dataset=full_dataset,
             groupby_fields=config.groupby_fields
         )
+        filter_grouper = CombinatorialGrouper(
+            dataset=full_dataset,
+            groupby_fields=config.filterby_fields
+        )
 
     # Configure labeled torch datasets (WILDS dataset splits)
     datasets = defaultdict(dict)
@@ -348,6 +364,10 @@ def main():
             split,
             frac=config.frac,
             transform=transform)
+
+        if config.filter is not None:
+            groups = filter_grouper.metadata_to_group(datasets[split]['dataset'].metadata_array)
+            datasets[split]['dataset'].indices = datasets[split]['dataset'].indices[torch.isin(groups, torch.Tensor(config.filter))]
 
         if split == 'train':
             datasets[split]['loader'] = get_train_loader(
@@ -450,7 +470,7 @@ def main():
         )
     else:
         if config.eval_epoch is None:
-            eval_model_path = model_prefix + 'best_model.pth'
+            eval_model_path = model_prefix + 'epoch:best_model.pth'
         else:
             eval_model_path = model_prefix +  f'epoch:{config.eval_epoch}_model.pth'
         best_epoch, best_val_metric = load(algorithm, eval_model_path, device=config.device)
@@ -460,19 +480,13 @@ def main():
             epoch = config.eval_epoch
         if epoch == best_epoch:
             is_best = True
-
-        # eval unlabeled dataset
-        y_pred = infer_predictions(algorithm.model, unlabeled_dataset['loader'], config)
-        y_pred = move_to(y_pred, torch.device("cpu"))
-        save_pred(y_pred, f'iwildcam_split:extra_unlabeled_seed:{config.seed}_epoch:best_pred')
-
-        # evaluate(
-        #     algorithm=algorithm,
-        #     datasets={'extra_unlabeled': unlabeled_dataset},
-        #     epoch=epoch,
-        #     general_logger=logger,
-        #     config=config,
-        #     is_best=is_best)
+        evaluate(
+            algorithm=algorithm,
+            datasets=datasets,
+            epoch=epoch,
+            general_logger=logger,
+            config=config,
+            is_best=is_best)
 
     if config.use_wandb:
         wandb.finish()
