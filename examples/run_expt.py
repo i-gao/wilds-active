@@ -4,6 +4,7 @@ import argparse
 import pandas as pd
 import torch
 import torch.nn as nn
+import glob
 import torchvision
 import sys
 from collections import defaultdict
@@ -277,9 +278,8 @@ def main():
             assert config.teacher_model_path is not None
             if not config.teacher_model_path.endswith(".pth"):
                 # Use the best model
-                config.teacher_model_path = os.path.join(
-                    config.teacher_model_path,  f"{config.dataset}_seed:{config.seed}_epoch:best_model.pth"
-                )
+                teacher_model_path = glob.glob(config.teacher_model_path + '*best_model.pth')
+                config.teacher_model_path = teacher_model_path[0] if len(teacher_model_path) else None
 
             d_out = infer_d_out(full_dataset, config)
             teacher_model = initialize_model(config, d_out).to(config.device)
@@ -425,19 +425,21 @@ def main():
         unlabeled_dataset=unlabeled_dataset,
     )
 
-    model_prefix = get_model_prefix(datasets['train'], config)
+    # model_prefix = get_model_prefix(datasets['train'], config) # this contains dataset & seed prefixes which are great, but the old codalab files don't use these
     if not config.eval_only:
         # Resume from most recent model in log_dir
         resume_success = False
         if resume:
-            save_path = model_prefix + 'epoch:last_model.pth'
-            if not os.path.exists(save_path):
+            save_path = glob.glob(config.log_dir + '/*last_model.pth')
+            save_path = save_path[0] if len(save_path) else None
+            if save_path is None:
                 epochs = [
                     int(file.split('epoch:')[1].split('_')[0])
                     for file in os.listdir(config.log_dir) if file.endswith('.pth')]
                 if len(epochs) > 0:
                     latest_epoch = max(epochs)
-                    save_path = model_prefix + f'epoch:{latest_epoch}_model.pth'
+                    save_path = glob.glob(config.log_dir + f'/*epoch:{latest_epoch}_model.pth')
+                    save_path = save_path[0] if len(save_path) else None
             try:
                 prev_epoch, best_val_metric = load(algorithm, save_path, device=config.device)
                 epoch_offset = prev_epoch + 1
@@ -470,9 +472,11 @@ def main():
         )
     else:
         if config.eval_epoch is None:
-            eval_model_path = model_prefix + 'epoch:best_model.pth'
+            eval_model_path = glob.glob(config.log_dir + '/*best_model.pth')
+            eval_model_path = eval_model_path[0] if len(eval_model_path) else None
         else:
-            eval_model_path = model_prefix +  f'epoch:{config.eval_epoch}_model.pth'
+            eval_model_path = glob.glob(config.log_dir + f'/*epoch:{config.eval_epoch}_model.pth')
+            eval_model_path = eval_model_path[0] if len(eval_model_path) else None
         best_epoch, best_val_metric = load(algorithm, eval_model_path, device=config.device)
         if config.eval_epoch is None:
             epoch = best_epoch
