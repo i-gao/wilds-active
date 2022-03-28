@@ -4,7 +4,8 @@ from sklearn.model_selection import ParameterGrid
 from datetime import date
 
 # any special experiment name to name output folders
-EXP_NAME = ""
+EXP_NAME = "finetune-individual-cameras"
+LOG_DIR = "/u/scr/irena/independent-iwildcam/individual-cameras"
 
 # key is the argument name expected by main.py
 # value should be a list of options
@@ -47,7 +48,7 @@ def main(args):
 
     name = f"_{EXP_NAME}" if EXP_NAME else ""
     for grid_params in grid:
-        dirname = f"{date.today()}{name}"
+        dirname = f"{LOG_DIR}/{date.today()}{name}"
         cmd = "python /u/scr/irena/wilds-active/examples/run_expt.py"
 
         # add grid search params
