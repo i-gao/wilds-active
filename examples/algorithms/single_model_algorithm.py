@@ -5,6 +5,7 @@ from scheduler import initialize_scheduler
 from optimizer import initialize_optimizer
 from torch.nn import DataParallel
 from torch.nn.utils import clip_grad_norm_
+from utils import move_to
 
 class SingleModelAlgorithm(GroupAlgorithm):
     """
@@ -25,7 +26,7 @@ class SingleModelAlgorithm(GroupAlgorithm):
             self.optimizer = initialize_optimizer(config, model)
         self.max_grad_norm = config.max_grad_norm
         scheduler = initialize_scheduler(config, self.optimizer, n_train_steps)
-        
+
         if config.use_data_parallel:
             model = DataParallel(model)
         model.to(config.device)
@@ -38,21 +39,22 @@ class SingleModelAlgorithm(GroupAlgorithm):
             device=config.device,
             grouper=grouper,
             logged_metrics=logged_metrics,
-            logged_fields=['objective', 'percent_src_examples'],
+            logged_fields=['objective'],
             schedulers=[scheduler,],
             scheduler_metric_names=[config.scheduler_metric_name,],
             no_group_logging=config.no_group_logging,
         )
         self.model = model
 
-    def change_n_train_steps(self, new_n_train_steps, config):
-        """
-        When using active learning, we run into a problem where we have to initialize the algorithm
-        before we've sampled our train set (and thus we initially don't know how many training steps we'll use). 
-        We can use this helper function to re-initializes schedulers after determining the length of our train set.
-        """
-        main_scheduler = initialize_scheduler(config, self.optimizer, new_n_train_steps)
-        self.schedulers[0] = main_scheduler
+    def get_model_output(self, x, y_true):
+        if self.model.needs_y:
+            if self.training:
+                outputs = self.model(x, y_true)
+            else:
+                outputs = self.model(x, None)
+        else:
+            outputs = self.model(x)
+        return outputs
 
     def process_batch(self, batch, unlabeled_batch=None):
         """
@@ -62,17 +64,20 @@ class SingleModelAlgorithm(GroupAlgorithm):
             - unlabeled_batch (tuple of Tensors or None): a batch of data yielded by unlabeled data loader
         Output:
             - results (dictionary): information about the batch
-                - y_true (Tensor)
-                - g (Tensor)
-                - metadata (Tensor)
-                - output (Tensor)
-                - y_true
+                - y_true (Tensor): ground truth labels for batch
+                - g (Tensor): groups for batch
+                - metadata (Tensor): metadata for batch
+                - y_pred (Tensor): model output for batch 
+                - unlabeled_g (Tensor): groups for unlabeled batch
+                - unlabeled_metadata (Tensor): metadata for unlabeled batch
+                - unlabeled_features (Tensor): features for unlabeled batch
         """
         x, y_true, metadata = batch
-        x = x.to(self.device)
-        y_true = y_true.to(self.device)
-        g = self.grouper.metadata_to_group(metadata).to(self.device)
-        outputs = self.model(x)
+        x = move_to(x, self.device)
+        y_true = move_to(y_true, self.device)
+        g = move_to(self.grouper.metadata_to_group(metadata), self.device)
+
+        outputs = self.get_model_output(x, y_true)
 
         results = {
             'g': g,
@@ -80,19 +85,22 @@ class SingleModelAlgorithm(GroupAlgorithm):
             'y_pred': outputs,
             'metadata': metadata,
         }
+        if unlabeled_batch is not None:
+            x, metadata = unlabeled_batch
+            x = x.to(self.device)
+            results['unlabeled_metadata'] = metadata
+            results['unlabeled_features'] = self.featurizer(x)
+            results['unlabeled_g'] = self.grouper.metadata_to_group(metadata).to(self.device)
         return results
 
     def objective(self, results):
         raise NotImplementedError
 
-    def evaluate(self, batch, unlabeled_batch=None, is_epoch_end=False):
+    def evaluate(self, batch):
         """
         Process the batch and update the log, without updating the model
         Args:
-            - batch (tuple of Tensors): a batch of labeled data yielded by data loaders
-            - unlabeled_batch: unlabled data. Use cases for passing in include if you're interested
-            in looking at the final loss (including unlabeled loss) or retrieving the unlabeled outputs
-            - is_epoch_end: no-op; kwarg required for compatibility with train.py
+            - batch (tuple of Tensors): a batch of data yielded by data loaders
         Output:
             - results (dictionary): information about the batch, such as:
                 - g (Tensor)
@@ -103,14 +111,8 @@ class SingleModelAlgorithm(GroupAlgorithm):
                 - objective (float)
         """
         assert not self.is_training
-        results = self.process_batch(batch, unlabeled_batch)
+        results = self.process_batch(batch)
         results['objective'] = self.objective(results).item()
-        
-        # log batch statistics
-        self.save_metric_for_logging( 
-            results, "percent_src_examples", torch.mean((batch[2][:,-1] == 0).float())
-        ) # assuming that src = train is always split 0 (which is true for the WILDS datasets)
-
         self.update_log(results)
         return self.sanitize_dict(results)
 
@@ -120,6 +122,8 @@ class SingleModelAlgorithm(GroupAlgorithm):
         Args:
             - batch (tuple of Tensors): a batch of data yielded by data loaders
             - unlabeled_batch (tuple of Tensors or None): a batch of data yielded by unlabeled data loader
+            - is_epoch_end: whether this batch is the last batch of the epoch. if so, force optimizer to step,
+                regardless of whether this batch idx divides self.gradient_accumulation_steps evenly
         Output:
             - results (dictionary): information about the batch, such as:
                 - g (Tensor)
@@ -130,21 +134,15 @@ class SingleModelAlgorithm(GroupAlgorithm):
                 - objective (float)
         """
         assert self.is_training
+
         # process this batch
-        results = self.process_batch(batch, unlabeled_batch=unlabeled_batch)
-        
+        results = self.process_batch(batch, unlabeled_batch)
+
         # update running statistics and update model if we've reached end of effective batch
         self._update(
-            results, 
+            results,
             should_step=(((self.batch_idx + 1) % self.gradient_accumulation_steps == 0) or (is_epoch_end))
         )
-
-        # log batch statistics
-        self.save_metric_for_logging( 
-            results, "percent_src_examples", torch.mean((batch[2][:,-1] == 0).float())
-        ) # assuming that src = train is always split 0 (which is true for the WILDS datasets)
-        
-        # log results
         self.update_log(results)
 
         # iterate batch index
@@ -166,7 +164,7 @@ class SingleModelAlgorithm(GroupAlgorithm):
         objective = self.objective(results)
         results['objective'] = objective.item()
         objective.backward()
-        
+
         # update model and logs based on effective batch
         if should_step:
             if self.max_grad_norm:

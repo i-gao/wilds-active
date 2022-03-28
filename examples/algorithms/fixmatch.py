@@ -1,20 +1,20 @@
-from typing import Dict, List
-
 import torch
 import torch.nn.functional as F
 
 from models.initializer import initialize_model
 from algorithms.single_model_algorithm import SingleModelAlgorithm
-from configs.supported import process_outputs_functions
+from configs.supported import process_pseudolabels_functions
+from utils import detach_and_clone
+
 
 class FixMatch(SingleModelAlgorithm):
     """
     FixMatch.
-    This algorithm was originally proposed as a semi-supervised learning algorithm. 
+    This algorithm was originally proposed as a semi-supervised learning algorithm.
 
     Loss is of the form
         \ell_s + \lambda * \ell_u
-    where 
+    where
         \ell_s = cross-entropy with true labels using weakly augmented labeled examples
         \ell_u = cross-entropy with pseudolabel generated using weak augmentation and prediction
             using strong augmentation
@@ -27,7 +27,7 @@ class FixMatch(SingleModelAlgorithm):
             year={2020}
             }
     """
-    def __init__(self, config, d_out, grouper, loss, unlabeled_loss, metric, n_train_steps):
+    def __init__(self, config, d_out, grouper, loss, metric, n_train_steps):
         featurizer, classifier = initialize_model(
             config, d_out=d_out, is_featurizer=True
         )
@@ -43,38 +43,34 @@ class FixMatch(SingleModelAlgorithm):
             n_train_steps=n_train_steps,
         )
         # algorithm hyperparameters
-        self.unlabeled_loss = unlabeled_loss
-        self.labeled_weight = config.self_training_labeled_weight
-        self.unlabeled_weight = config.self_training_unlabeled_weight
+        self.fixmatch_lambda = config.self_training_lambda
         self.confidence_threshold = config.self_training_threshold
-        if config.process_outputs_function is not None:
-            self.process_outputs_function = process_outputs_functions[config.process_outputs_function]
-        self.soft_pseudolabels = config.soft_pseudolabels
+        self.process_pseudolabels_function = process_pseudolabels_functions[config.process_pseudolabels_function]
+
         # Additional logging
         self.logged_fields.append("pseudolabels_kept_frac")
         self.logged_fields.append("classification_loss")
         self.logged_fields.append("consistency_loss")
 
-    def process_batch(self, labeled_batch, unlabeled_batch=None):
+    def process_batch(self, batch, unlabeled_batch=None):
         """
+        Overrides single_model_algorithm.process_batch().
         Args:
-            - labeled_batch: examples (x, y, m) where x is weakly augmented
+            - batch (x, y, m): a batch of data yielded by data loaders
             - unlabeled_batch: examples ((x_weak, x_strong), m) where x_weak is weakly augmented but x_strong is strongly augmented
-        Returns: results, a dict containing keys:
-            - 'g': groups for the labeled batch
-            - 'y_true': true labels for the labeled batch
-            - 'y_pred': outputs (logits) for the labeled batch
-            - 'metadata': metdata tensor for the labeled batch
-            - 'unlabeled_g': groups for the unlabeled batch
-            - 'unlabeled_y_pseudo': class pseudolabels predicted from weakly augmented x of the unlabeled batch
-            - 'unlabeled_mask': true if the unlabeled example had confidence above the threshold; we pass this around 
-                to help compute the loss in self.objective()
-            - 'unlabeled_y_pred': outputs (logits) on strongly augmented x of the unlabeled batch
-            - 'unlabeled_metadata': metdata tensor for the unlabeled batch
+        Output:
+            - results (dictionary): information about the batch
+                - y_true (Tensor): ground truth labels for batch
+                - g (Tensor): groups for batch
+                - metadata (Tensor): metadata for batch
+                - y_pred (Tensor): model output for batch
+                - unlabeled_g (Tensor): groups for unlabeled batch
+                - unlabeled_metadata (Tensor): metadata for unlabeled batch
+                - unlabeled_weak_y_pseudo (Tensor): pseudolabels on x_weak of the unlabeled batch, already thresholded 
+                - unlabeled_strong_y_pred (Tensor): model output on x_strong of the unlabeled batch, already thresholded 
         """
-        assert labeled_batch is not None or unlabeled_batch is not None
         # Labeled examples
-        x, y_true, metadata = labeled_batch
+        x, y_true, metadata = batch
         x = x.to(self.device)
         y_true = y_true.to(self.device)
         g = self.grouper.metadata_to_group(metadata).to(self.device)
@@ -84,9 +80,11 @@ class FixMatch(SingleModelAlgorithm):
             'y_true': y_true,
             'metadata': metadata
         }
+        pseudolabels_kept_frac = 0
+
         # Unlabeled examples
         if unlabeled_batch is not None:
-            (x_weak, x_strong), _,  metadata = unlabeled_batch
+            (x_weak, x_strong), metadata = unlabeled_batch
             x_weak = x_weak.to(self.device)
             x_strong = x_strong.to(self.device)
 
@@ -96,56 +94,50 @@ class FixMatch(SingleModelAlgorithm):
 
             with torch.no_grad():
                 outputs = self.model(x_weak)
-                mask = torch.max(F.softmax(outputs, -1), -1)[0] >= self.confidence_threshold
-                outputs = torch.nn.functional.softmax(outputs, dim=1)
-                if self.soft_pseudolabels:
-                    pseudolabels = outputs
-                else: 
-                    pseudolabels = self.process_outputs_function(outputs)
-                results['unlabeled_y_pseudo'] = pseudolabels
-                results['unlabeled_mask'] = mask
-        
-        # Concat and call forward
-        n_lab = x.shape[0]
-        if unlabeled_batch is not None: x_concat = torch.cat((x, x_strong), dim=0)
-        else: x_concat = x
-        outputs = self.model(x_concat)
-        results['y_pred'] = outputs[:n_lab]
-        if unlabeled_batch is not None:
-            results['unlabeled_y_pred'] = outputs[n_lab:]
-        
-        return results
+                _, pseudolabels, pseudolabels_kept_frac, mask = self.process_pseudolabels_function(
+                    outputs,
+                    self.confidence_threshold,
+                )
+                results['unlabeled_weak_y_pseudo'] = detach_and_clone(pseudolabels)
 
-    def objective(self, results):
-        # Labeled loss
-        if 'y_pred' in results:
-            classification_loss = self.loss.compute(results['y_pred'], results['y_true'], return_dict=False)
-        else:
-            classification_loss = 0
-        
-        # Pseudolabeled loss
-        if 'unlabeled_y_pseudo' in results:
-            mask = results['unlabeled_mask']
-            masked_loss_output = self.unlabeled_loss.compute_element_wise(
-                results['unlabeled_y_pred'],
-                results['unlabeled_y_pseudo'],
-                return_dict=False,
-            ) * mask
-            consistency_loss = masked_loss_output.mean()
-            pseudolabels_kept_frac = mask.count_nonzero().item() / mask.shape[0]
-        else:
-            consistency_loss = 0
-            pseudolabels_kept_frac = 0
-
-        # Add to results for additional logging
-        self.save_metric_for_logging(
-            results, "classification_loss", self.labeled_weight * classification_loss
-        )
-        self.save_metric_for_logging(
-            results, "consistency_loss", self.unlabeled_weight * consistency_loss
-        )
         self.save_metric_for_logging(
             results, "pseudolabels_kept_frac", pseudolabels_kept_frac
         )
 
-        return self.labeled_weight * classification_loss + self.unlabeled_weight * consistency_loss
+        # Concat and call forward
+        n_lab = x.shape[0]
+        if unlabeled_batch is not None:
+            x_concat = torch.cat((x, x_strong), dim=0)
+        else:
+            x_concat = x
+
+        outputs = self.model(x_concat)
+        results['y_pred'] = outputs[:n_lab]
+        if unlabeled_batch is not None:
+            results['unlabeled_strong_y_pred'] = outputs[n_lab:] if mask is None else outputs[n_lab:][mask]
+        return results
+
+    def objective(self, results):
+        # Labeled loss
+        classification_loss = self.loss.compute(results['y_pred'], results['y_true'], return_dict=False)
+
+        # Pseudolabeled loss
+        if 'unlabeled_weak_y_pseudo' in results:
+            loss_output = self.loss.compute(
+                results['unlabeled_strong_y_pred'],
+                results['unlabeled_weak_y_pseudo'],
+                return_dict=False,
+            )
+            consistency_loss = loss_output * results['pseudolabels_kept_frac']
+        else:
+            consistency_loss = 0
+
+        # Add to results for additional logging
+        self.save_metric_for_logging(
+            results, "classification_loss", classification_loss
+        )
+        self.save_metric_for_logging(
+            results, "consistency_loss", consistency_loss
+        )
+
+        return classification_loss + self.fixmatch_lambda * consistency_loss

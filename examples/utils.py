@@ -11,34 +11,27 @@ import re
 
 from torch.utils.data import DataLoader
 
-from algorithms.algorithm import Algorithm
-
-from collections import defaultdict
-from wilds.common.data_loaders import get_train_loader, get_eval_loader
-
 try:
     import wandb
-except Exception as e:
+except ImportError as e:
     pass
 
-def accuracy(pred, target, process_outputs_function):
-    assert len(pred) == len(target)
-    if pred.dim() > 1:
-        pred = process_outputs_function(pred)
-    if target.dim() > 1:
-        target = process_outputs_function(target)
-    return torch.mean((pred == target).float()) 
+try:
+    from torch_geometric.data import Batch
+except ImportError:
+    pass
+
 
 def cross_entropy_with_logits_loss(input, soft_target):
     """
     Implementation of CrossEntropy loss using a soft target. Extension of BCEWithLogitsLoss to MCE.
-    Normally, cross entropy loss is 
+    Normally, cross entropy loss is
         \sum_j 1{j == y} -log \frac{e^{s_j}}{\sum_k e^{s_k}} = -log \frac{e^{s_y}}{\sum_k e^{s_k}}
     Here we use
         \sum_j P_j *-log \frac{e^{s_j}}{\sum_k e^{s_k}}
-    where 0 <= P_j <= 1    
+    where 0 <= P_j <= 1
     Does not support fancy nn.CrossEntropy options (e.g. weight, size_average, ignore_index, reductions, etc.)
-    
+
     Args:
     - input (N, k): logits
     - soft_target (N, k): targets for softmax(input); likely want to use class probabilities
@@ -86,12 +79,6 @@ def parse_bool(v):
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
-def parse_none(v):
-    if v.lower()=='none':
-        return None
-    else:
-        return v
-
 def save_model(algorithm, epoch, best_val_metric, path):
     state = {}
     state['algorithm'] = algorithm.state_dict()
@@ -99,35 +86,37 @@ def save_model(algorithm, epoch, best_val_metric, path):
     state['best_val_metric'] = best_val_metric
     torch.save(state, path)
 
-def freeze_features(algorithm):
-    """Freezes all params except the last layer"""
-    *_, last = algorithm.modules()
-    for param in algorithm.model.parameters():
-        param.requires_grad = False
-    for param in last.parameters():
-        param.requires_grad = True
-    print(f"\nNumber of unfrozen parameters: {len(list(filter(lambda p: p.requires_grad, algorithm.parameters())))}")
-
 def load(module, path, device=None, tries=2):
-    """Handles loading weights saved from this repo/model into an algorithm/model."""
+    """
+    Handles loading weights saved from this repo/model into an algorithm/model.
+    Attempts to handle key mismatches between this module's state_dict and the loaded state_dict.
+    Args:
+        - module (torch module): module to load parameters for
+        - path (str): path to .pth file
+        - device: device to load tensors on
+        - tries: number of times to run the match_keys() function
+    """
     if device is not None:
         state = torch.load(path, map_location=device)
     else:
         state = torch.load(path)
 
-    ## edge case: if module is a metalearning model, we want to load the state into self.meta_model.module (l2l artifact)
-    if hasattr(module, 'meta_model'): module = module.meta_model.module
-
+    # Loading from a saved WILDS Algorithm object
     if 'algorithm' in state:
         prev_epoch = state['epoch']
         best_val_metric = state['best_val_metric']
         state = state['algorithm']
+    # Loading from a pretrained SwAV model
+    elif 'state_dict' in state:
+        state = state['state_dict']
+        prev_epoch, best_val_metric = None, None
     else:
         prev_epoch, best_val_metric = None, None
 
-    # naive approach works if alg -> alg / mod -> mod
+    # If keys match perfectly, load_state_dict() will work
     try: module.load_state_dict(state)
     except:
+        # Otherwise, attempt to reconcile mismatched keys and load with strict=False
         module_keys = module.state_dict().keys()
         for _ in range(tries):
             state = match_keys(state, list(module_keys))
@@ -292,48 +281,16 @@ def initialize_wandb(config):
     wandb.init(**config.wandb_kwargs)
     wandb.config.update(config)
 
-def configure_split_dict(split, data, split_name, verbose, grouper, batch_size, config, get_train=False, get_eval=False):
-    split_dict = defaultdict(dict)
-
-    # Loaders and dict
-    if data is not None: 
-        split_dict['dataset'] = data
-        if get_train: split_dict['train_loader'] = get_train_loader(
-            loader=config.train_loader,
-            dataset=split_dict['dataset'],
-            batch_size=batch_size,
-            uniform_over_groups=config.uniform_over_groups,
-            grouper=grouper,
-            distinct_groups=config.distinct_groups,
-            n_groups_per_batch=config.n_groups_per_batch,
-            **config.loader_kwargs)
-        if get_eval: split_dict['eval_loader'] = get_eval_loader(
-            loader=config.eval_loader,
-            dataset=split_dict['dataset'],
-            grouper=grouper,
-            batch_size=batch_size,
-            **config.loader_kwargs)
-
-    # Set fields
-    split_dict['split'] = split
-    split_dict['name'] = split_name
-    split_dict['verbose'] = verbose 
-
-    # Loggers
-    split_dict['eval_logger'] = BatchLogger(
-        os.path.join(config.log_dir, f'{split}_eval.csv'), mode=config.mode, use_wandb=config.use_wandb
-    )
-    split_dict['algo_logger'] = BatchLogger(
-        os.path.join(config.log_dir, f'{split}_algo.csv'), mode=config.mode, use_wandb=config.use_wandb
-    )
-
-    return split_dict
-
-def save_array(arr, csv_path, mode='w'):
-    if torch.is_tensor(arr): 
-        arr = arr.numpy()
-    df = pd.DataFrame(arr)
-    df.to_csv(csv_path, mode=mode, index=False, header=False)
+def save_pred(y_pred, path_prefix):
+    # Single tensor
+    if torch.is_tensor(y_pred):
+        df = pd.DataFrame(y_pred.numpy())
+        df.to_csv(path_prefix + '.csv', index=False, header=False)
+    # Dictionary
+    elif isinstance(y_pred, dict) or isinstance(y_pred, list):
+        torch.save(y_pred, path_prefix + '.pth')
+    else:
+        raise TypeError("Invalid type for save_pred")
 
 def get_replicate_str(dataset, config):
     if dataset['dataset'].dataset_name == 'poverty':
@@ -358,6 +315,72 @@ def get_model_prefix(dataset, config):
         config.log_dir,
         f"{dataset_name}_{replicate_str}_")
     return prefix
+
+def move_to(obj, device):
+    if isinstance(obj, dict):
+        return {k: move_to(v, device) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [move_to(v, device) for v in obj]
+    elif isinstance(obj, float) or isinstance(obj, int):
+        return obj
+    else:
+        # Assume obj is a Tensor or other type
+        # (like Batch, for MolPCBA) that supports .to(device)
+        return obj.to(device)
+
+def detach_and_clone(obj):
+    if torch.is_tensor(obj):
+        return obj.detach().clone()
+    elif isinstance(obj, dict):
+        return {k: detach_and_clone(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [detach_and_clone(v) for v in obj]
+    elif isinstance(obj, float) or isinstance(obj, int):
+        return obj
+    else:
+        raise TypeError("Invalid type for detach_and_clone")
+
+def collate_list(vec):
+    """
+    If vec is a list of Tensors, it concatenates them all along the first dimension.
+
+    If vec is a list of lists, it joins these lists together, but does not attempt to
+    recursively collate. This allows each element of the list to be, e.g., its own dict.
+
+    If vec is a list of dicts (with the same keys in each dict), it returns a single dict
+    with the same keys. For each key, it recursively collates all entries in the list.
+    """
+    if not isinstance(vec, list):
+        raise TypeError("collate_list must take in a list")
+    elem = vec[0]
+    if torch.is_tensor(elem):
+        return torch.cat(vec)
+    elif isinstance(elem, list):
+        return [obj for sublist in vec for obj in sublist]
+    elif isinstance(elem, dict):
+        return {k: collate_list([d[k] for d in vec]) for k in elem}
+    else:
+        raise TypeError("Elements of the list to collate must be tensors or dicts.")
+
+def remove_key(key):
+    """
+    Returns a function that strips out a key from a dict.
+    """
+    def remove(d):
+        if not isinstance(d, dict):
+            raise TypeError("remove_key must take in a dict")
+        return {k: v for (k,v) in d.items() if k != key}
+    return remove
+
+def concat_input(labeled_x, unlabeled_x):
+    if isinstance(labeled_x, torch.Tensor):
+        x_cat = torch.cat((labeled_x, unlabeled_x), dim=0)
+    elif isinstance(labeled_x, Batch):
+        labeled_x.y = None
+        x_cat = Batch.from_data_list([labeled_x, unlabeled_x])
+    else:
+        raise TypeError("x must be Tensor or Batch")
+    return x_cat
 
 class InfiniteDataIterator:
     """
