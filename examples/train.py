@@ -7,6 +7,10 @@ from configs.supported import process_outputs_functions, process_pseudolabels_fu
 from utils import save_model, save_pred, get_pred_prefix, get_model_prefix, collate_list, detach_and_clone, InfiniteDataIterator
 
 def run_epoch(algorithm, dataset, general_logger, epoch, config, train, unlabeled_dataset=None):
+    if len(dataset['dataset']) == 0:
+        print(f"Warning: split {dataset['name']} is empty.")
+        return None, None
+
     if dataset['verbose']:
         general_logger.write(f"\n{dataset['name']}:\n")
 
@@ -98,27 +102,34 @@ def run_epoch(algorithm, dataset, general_logger, epoch, config, train, unlabele
     return results, epoch_y_pred
 
 
-def train(algorithm, datasets, general_logger, config, epoch_offset, best_val_metric, unlabeled_dataset=None):
+def train(algorithm, datasets, general_logger, config, epoch_offset, best_val_metric, unlabeled_dataset=None, val_split='val'):
     """
     Train loop that, each epoch:
         - Steps an algorithm on the datasets['train'] split and the unlabeled split
-        - Evaluates the algorithm on the datasets['val'] split
+        - Evaluates the algorithm on the datasets[val_split] split
         - Saves models / preds with frequency according to the configs
         - Evaluates on any other specified splits in the configs
     Assumes that the datasets dict contains labeled data.
     """
+    if val_split != "val": best_val_metric = None
+
     for epoch in range(epoch_offset, config.n_epochs):
         general_logger.write('\nEpoch [%d]:\n' % epoch)
 
         # First run training
         run_epoch(algorithm, datasets['train'], general_logger, epoch, config, train=True, unlabeled_dataset=unlabeled_dataset)
 
-        # Then run val
-        val_results, y_pred = run_epoch(algorithm, datasets['val'], general_logger, epoch, config, train=False)
-        curr_val_metric = val_results[config.val_metric]
-        general_logger.write(f'Validation {config.val_metric}: {curr_val_metric:.3f}\n')
+        # Then run val split
+        val_results, y_pred = run_epoch(algorithm, datasets[val_split], general_logger, epoch, config, train=False)
+        if val_results is not None: 
+            curr_val_metric = val_results[config.val_metric]
+            general_logger.write(f'Validation {config.val_metric}: {curr_val_metric:.3f}\n')
+        else:
+            curr_val_metric = None
 
-        if best_val_metric is None:
+        if curr_val_metric is None:
+            is_best=False
+        elif best_val_metric is None:
             is_best = True
         else:
             if config.val_metric_decreasing:
@@ -129,12 +140,12 @@ def train(algorithm, datasets, general_logger, config, epoch_offset, best_val_me
             best_val_metric = curr_val_metric
             general_logger.write(f'Epoch {epoch} has the best validation performance so far.\n')
 
-        save_model_if_needed(algorithm, datasets['val'], epoch, config, is_best, best_val_metric)
-        save_pred_if_needed(y_pred, datasets['val'], epoch, config, is_best)
+        save_model_if_needed(algorithm, datasets[val_split], epoch, config, is_best, best_val_metric)
+        save_pred_if_needed(y_pred, datasets[val_split], epoch, config, is_best)
 
         # Then run everything else
         if config.evaluate_all_splits:
-            additional_splits = [split for split in datasets.keys() if split not in ['train','val']]
+            additional_splits = [split for split in datasets.keys() if split not in ['train', val_split]]
         else:
             additional_splits = config.eval_splits
         for split in additional_splits:
@@ -219,6 +230,7 @@ def log_results(algorithm, dataset, general_logger, epoch, effective_batch_idx):
 
 
 def save_pred_if_needed(y_pred, dataset, epoch, config, is_best, force_save=False):
+    if y_pred is None: return
     if config.save_pred:
         prefix = get_pred_prefix(dataset, config)
         if force_save or (config.save_step is not None and (epoch + 1) % config.save_step == 0):

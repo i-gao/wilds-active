@@ -1,4 +1,5 @@
 import copy
+import torch
 from configs.algorithm import algorithm_defaults
 from configs.model import model_defaults
 from configs.scheduler import scheduler_defaults
@@ -12,6 +13,10 @@ def populate_defaults(config):
     orig_config = copy.deepcopy(config)
     assert config.dataset is not None, 'dataset must be specified'
     assert config.algorithm is not None, 'algorithm must be specified'
+
+    # Type conversions
+    if config.filter is not None: # then it is a list of strs
+        config.filter = torch.Tensor([int(x) for x in config.filter])
 
     # Run oracle using ERM with unlabeled split
     if config.use_unlabeled_y:

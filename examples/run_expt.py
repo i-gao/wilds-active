@@ -63,6 +63,7 @@ def main():
     # Filter what data is trained on according to another grouper
     parser.add_argument('--filterby_fields',  nargs='+', help='Defines a grouper used to filter examples on.')
     parser.add_argument('--filter',  nargs='+', default=None, help='Group ids (ints) to keep, as set by a grouper defined on filterby_fields. All other labeled & unlabeled examples will be discarded. Note: this affects your evaluation set too.')
+    parser.add_argument('--filter_splits', default=['train'], nargs='+', help='Splits to filter.')
 
     # Loaders
     parser.add_argument('--loader_kwargs', nargs='*', action=ParseKwargs, default={})
@@ -124,6 +125,7 @@ def main():
     parser.add_argument('--process_pseudolabels_function', choices=supported.process_pseudolabels_functions)
 
     # Model selection
+    parser.add_argument('--val_split', default='val')
     parser.add_argument('--val_metric')
     parser.add_argument('--val_metric_decreasing', type=parse_bool, const=True, nargs='?')
 
@@ -293,9 +295,9 @@ def main():
                 additional_transform_name="weak"
             )
             unlabeled_split_dataset = full_unlabeled_dataset.get_subset(split, transform=weak_transform, frac=config.frac)
-            if config.filter is not None:
+            if config.filter is not None and split in config.filter_splits:
                 groups = filter_grouper.metadata_to_group(unlabeled_split_dataset.metadata_array)
-                unlabeled_split_dataset.indices = unlabeled_split_dataset.indices[torch.isin(groups, torch.Tensor(config.filter))]
+                unlabeled_split_dataset.indices = unlabeled_split_dataset.indices[torch.isin(groups, config.filter)]
 
             sequential_loader = get_eval_loader(
                 loader=config.eval_loader,
@@ -365,9 +367,9 @@ def main():
             frac=config.frac,
             transform=transform)
 
-        if config.filter is not None:
+        if config.filter is not None and split in config.filter_splits:
             groups = filter_grouper.metadata_to_group(datasets[split]['dataset'].metadata_array)
-            datasets[split]['dataset'].indices = datasets[split]['dataset'].indices[torch.isin(groups, torch.Tensor(config.filter))]
+            datasets[split]['dataset'].indices = datasets[split]['dataset'].indices[torch.isin(groups, config.filter)]
 
         if split == 'train':
             datasets[split]['loader'] = get_train_loader(
@@ -469,6 +471,7 @@ def main():
             epoch_offset=epoch_offset,
             best_val_metric=best_val_metric,
             unlabeled_dataset=unlabeled_dataset,
+            val_split=config.val_split,
         )
     else:
         if config.eval_epoch is None:
