@@ -77,10 +77,11 @@ def main(args):
 
         # add grid search params
         for key, val in grid_params.items():
-            dirname += f"_{key}={str(val)[:10]}" # when naming dir, truncate values to first 10 chars
+            if key == 'filter': dirname += f"_{key}={'-'.join(val.split(' '))[:10]}" # when naming dir, truncate values to first 10 chars
+            else: dirname += f"_{key}={val}"
             cmd += f" --{key} {val}"
         
-        cmd += f" --wandb_kwargs entity=i-gao project={EXP_NAME} group=camera-{str(grid_params['filter'])}"
+        cmd += f" --wandb_kwargs entity=i-gao project={EXP_NAME} group=camera-{'-'.join(grid_params['filter'].split(' '))[:10]}"
 
         # add other params
         for key, val in OTHER_ARGS.items():
