@@ -10,7 +10,8 @@ LOG_DIR = "/u/scr/irena/independent-iwildcam/individual-cameras"
 # key is the argument name expected by main.py
 # value should be a list of options
 GRID_SEARCH = {
-    'filter': [0] # train cameras
+    'filter': [0], # train cameras
+    'weight_decay': [0, 0.01, 0.1, 1],
 }
 
 # key is the argument name expected by main.py
@@ -19,14 +20,17 @@ OTHER_ARGS = {
     'algorithm': "ERM",
     'dataset': "iwildcam",
     'lr': 3e-05,
-    'weight_decay': 0,
+#    'weight_decay': 0,
     'n_epochs': 10,
-    'pretrain_model_path': "/u/scr/irena/wilds-unlabeled-model-selection/models/0xc006392d35404899bf248d8f3dc8a8f2",
+    'pretrained_model_path': "/u/scr/irena/wilds-unlabeled-model-selection/models/0xc006392d35404899bf248d8f3dc8a8f2/best_model.pth",
     'filterby_fields': ["location"],
     'filter_splits': ["train", "id_test", "id_val"],
     'val_split': "id_val",
     'evaluate_all_splits': False,
     'eval_splits': ["test", "id_test"],
+    'save_step': 2,
+    'save_last': False,
+    'log_every': 1,
     'use_wandb': True,
     'wandb_api_key_path': "/sailhome/irena/.ssh/wandb-api-key",
     'root_dir': "/u/scr/nlp/dro/wilds-datasets",
@@ -34,7 +38,7 @@ OTHER_ARGS = {
 }
 
 SLURM_ARGS = {
-    'anaconda-environment': "wilds",
+    'anaconda-environment': "wilds-ig",
     'queue': "jag",
     'priority': "standard",
     'gpu-type': "titanxp",
@@ -56,7 +60,7 @@ def main(args):
             dirname += f"_{key}={val}"
             cmd += f" --{key} {val}"
         
-        cmd += f" --wandb_kwargs entity=i-gao project={EXP_NAME} group={grid_params['filter']}"
+        cmd += f" --wandb_kwargs entity=i-gao project={EXP_NAME} group=camera-{str(grid_params['filter'])}"
 
         # add other params
         for key, val in OTHER_ARGS.items():
