@@ -4,6 +4,7 @@ import argparse
 import pandas as pd
 import torch
 import torch.nn as nn
+import numpy as np
 import glob
 import torchvision
 import sys
@@ -297,7 +298,7 @@ def main():
             unlabeled_split_dataset = full_unlabeled_dataset.get_subset(split, transform=weak_transform, frac=config.frac)
             if config.filter is not None and split in config.filter_splits:
                 groups = filter_grouper.metadata_to_group(unlabeled_split_dataset.metadata_array)
-                unlabeled_split_dataset.indices = unlabeled_split_dataset.indices[torch.isin(groups, config.filter)]
+                unlabeled_split_dataset.indices = unlabeled_split_dataset.indices[np.isin(groups, config.filter)]
 
             sequential_loader = get_eval_loader(
                 loader=config.eval_loader,
@@ -369,7 +370,7 @@ def main():
 
         if config.filter is not None and split in config.filter_splits:
             groups = filter_grouper.metadata_to_group(datasets[split]['dataset'].metadata_array)
-            datasets[split]['dataset'].indices = datasets[split]['dataset'].indices[torch.isin(groups, config.filter)]
+            datasets[split]['dataset'].indices = datasets[split]['dataset'].indices[np.isin(groups, config.filter)]
 
         if split == 'train':
             datasets[split]['loader'] = get_train_loader(
