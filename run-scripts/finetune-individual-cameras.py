@@ -41,7 +41,10 @@ OTHER_ARGS = {
     'lr': 1e-05,
     'weight_decay': 0,
     'n_epochs': 4,
-    'pretrained_model_path': "/u/scr/irena/wilds-unlabeled-model-selection/models/0xc006392d35404899bf248d8f3dc8a8f2/best_model.pth",
+    # 'pretrained_model_path': "/u/scr/irena/wilds-unlabeled-model-selection/models/0xc006392d35404899bf248d8f3dc8a8f2/best_model.pth", # use unaugmented model
+    'pretrained_model_path': "/u/scr/irena/wilds-unlabeled-model-selection/models/0x52f2dd8e448a4c7e802783fa35c269c6/iwildcam_seed:0_epoch:best_model.pth", # use augmented model
+    'additional_train_transform': "randaugment", # use augmentations
+    'batch_size': 24, # use augmented model batch size
     'filterby_fields': ["location"],
     'filter_splits': ["train", "id_test", "id_val"],
     'val_split': "id_val",
