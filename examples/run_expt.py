@@ -21,6 +21,7 @@ from wilds.common.grouper import CombinatorialGrouper
 from wilds.datasets.unlabeled.wilds_unlabeled_dataset import WILDSPseudolabeledSubset
 
 from utils import set_seed, Logger, BatchLogger, log_config, ParseKwargs, load, initialize_wandb, log_group_data, parse_bool, get_model_prefix, move_to
+from data_augmentation.iwcbg import modify_getitem_fn_for_iwctransform
 from train import train, evaluate, infer_predictions
 from algorithms.initializer import initialize_algorithm, infer_d_out
 from transforms import initialize_transform
@@ -94,6 +95,7 @@ def main():
     # Transforms
     parser.add_argument('--transform', choices=supported.transforms)
     parser.add_argument('--additional_train_transform', choices=supported.additional_transforms, help='Optional data augmentations to layer on top of the default transforms.')
+    parser.add_argument('--use_iwctransform', type=parse_bool, help="iwc augmentation: swap out bgs")
     parser.add_argument('--target_resolution', nargs='+', type=int, help='The input resolution that images will be resized to before being passed into the model. For example, use --target_resolution 224 224 for a standard ResNet.')
     parser.add_argument('--resize_scale', type=float)
     parser.add_argument('--max_token_length', type=int)
@@ -362,11 +364,18 @@ def main():
         else:
             transform = eval_transform
             verbose = False
-        # Get subset
-        datasets[split]['dataset'] = full_dataset.get_subset(
-            split,
-            frac=config.frac,
-            transform=transform)
+        # Get subset        
+        if transform == train_transform and config.use_iwctransform: # this split's transform needs more information
+            orig_subset = full_dataset.get_subset(
+                split,
+                frac=config.frac,
+                transform=transform)
+            datasets[split]['dataset'] = modify_getitem_fn_for_iwctransform(orig_subset)
+        else:
+            datasets[split]['dataset'] = full_dataset.get_subset(
+                split,
+                frac=config.frac,
+                transform=transform)
 
         if config.filter is not None and split in config.filter_splits:
             groups = filter_grouper.metadata_to_group(datasets[split]['dataset'].metadata_array)

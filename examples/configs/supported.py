@@ -40,7 +40,7 @@ process_pseudolabels_functions = {
 algorithms = ['ERM', 'groupDRO', 'deepCORAL', 'IRM', 'DANN', 'AFN', 'FixMatch', 'PseudoLabel', 'NoisyStudent']
 
 # See transforms.py
-transforms = ['bert', 'image_base', 'image_resize', 'image_resize_and_center_crop', 'poverty',  'rxrx1']
+transforms = ['bert', 'image_base', 'image_resize', 'image_resize_and_center_crop', 'poverty',  'rxrx1', 'iwildcam']
 additional_transforms = ['randaugment', 'weak']
 
 # See models/initializer.py
